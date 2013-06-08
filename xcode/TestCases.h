@@ -9,7 +9,7 @@
 #ifndef TCO13MM3_TestCases_h
 #define TCO13MM3_TestCases_h
 
-#define TEST_ID 3
+#define TEST_ID 6
 
 #if TEST_ID == 0
 double XX[] = {0.501, 0.5};

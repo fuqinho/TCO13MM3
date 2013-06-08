@@ -77,6 +77,7 @@ void TCO13MM3App::mouseDrag( MouseEvent event )
 
 void TCO13MM3App::update()
 {
+    for (int i=0; i<5; i++)
     solution->update(0.003);
 }
 

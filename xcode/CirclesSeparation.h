@@ -99,26 +99,7 @@ public:
         
         // determine initial position
         sort(c.begin(), c.end(), greaterMass);
-        vector<pair<double, int> > scores(N);
-        double totalArea = 0;
-        for (int i = 0; i < N; i++) {
-            double len_from_center = (Vec(0.5, 0.5) - c[i].pos).length();
-            double mass = c[i].m;
-            double area = c[i].r * c[i].r;
-            double jama = area / mass / mass / (len_from_center + 0.4);
-            scores[i] = make_pair(-jama, i);
-            totalArea += 3.14*area;
-        }
-        
-        cerr << totalArea << endl;
-        sort(scores.begin(), scores.end());
-        for (int i = 0; i < N / 10 * totalArea; i++) {
-            int index = scores[i].second;
-            Vec d = c[index].pos - Vec(0.5, 0.5);
-            d.normalize();
-            c[index].pos += d * 2;
-        }
-    
+        restart();
     }
     
     void restart() {
@@ -128,28 +109,41 @@ public:
         }
         
         // determine initial position
-        sort(c.begin(), c.end(), greaterMass);
         vector<pair<double, int> > scores(N);
         double totalArea = 0;
         for (int i = 0; i < N; i++) {
             double len_from_center = (Vec(0.5, 0.5) - c[i].pos).length();
             double mass = c[i].m;
             double area = c[i].r * c[i].r;
-            double jama = area / mass / mass / (len_from_center + 0.4);
-            scores[i] = make_pair(-jama, i);
+            double jama = area / mass / mass;
+            scores[i] = make_pair(jama, i);
             totalArea += 3.14*area;
         }
         
-        cerr << totalArea << endl;
         sort(scores.begin(), scores.end());
         
+        /*
         int ub = N / 5 * totalArea;
         int MN = (int)(ub * (double)rand() / RAND_MAX);
+        if (frames == 0) MN = N / 10 * totalArea;
         for (int i = 0; i < min(N, MN); i++) {
             int index = scores[i].second;
             Vec d = c[index].pos - Vec(0.5, 0.5);
             d.normalize();
             c[index].pos += d * 2;
+        }
+         */
+        double thresh = 0.8 + 0.4 * (double)rand() / RAND_MAX;
+        double filledArea = 0.0;
+        for (int i = 0; i < N; i++) {
+            int index = scores[i].second;
+            if (filledArea > thresh) {
+                Vec d = c[index].pos - Vec(0.5, 0.5);
+                d.normalize();
+                c[index].pos += d * 2;
+            } else {
+                filledArea += c[index].r * c[index].r * 3.14;
+            }
         }
     }
     
@@ -166,22 +160,24 @@ public:
         }
         
         // FORCE by the collision
-        double CD = 0.7 / dt;
-        for (int i = 0; i < N; i++) {
-            for (int j = i+1; j < N; j++) {
-                if (c[i].is_hover || c[j].is_hover) continue;
-                Vec d = c[j].pos - c[i].pos;
-                if (d.isSmallerThan(c[i].r + c[j].r + 0.003)) {
-                    Vec dv = c[j].v - c[i].v;
-                    Vec norm = d;
-                    norm.normalize();
-                    double D = max(0.0, c[i].r + c[j].r  + 0.003 - d.length());
-                    double C = c[i].m * c[j].m / (c[i].m + c[j].m) * ((1 + E) * dot(dv, norm) - CD*D);
-                    c[i].v += norm * C / (c[i].m);
-                    c[j].v -= norm * C / (c[j].m);
+        //if (frames % RESTART_FRAME > 300) {
+            double CD = 0.7 / dt;
+            for (int i = 0; i < N; i++) {
+                for (int j = i+1; j < N; j++) {
+                    if (c[i].is_hover || c[j].is_hover) continue;
+                    Vec d = c[j].pos - c[i].pos;
+                    if (d.isSmallerThan(c[i].r + c[j].r + 0.003)) {
+                        Vec dv = c[j].v - c[i].v;
+                        Vec norm = d;
+                        norm.normalize();
+                        double D = max(0.0, c[i].r + c[j].r  + 0.003 - d.length());
+                        double C = c[i].m * c[j].m / (c[i].m + c[j].m) * ((1 + E) * dot(dv, norm) - CD*D);
+                        c[i].v += norm * C / (c[i].m);
+                        c[j].v -= norm * C / (c[j].m);
+                    }
                 }
             }
-        }
+        //}
     
         // add friction
         for (int i = 0; i < N; i++) {
