@@ -35,6 +35,7 @@
 		8D1107320486CEB800E47090 /* TCO13MM3.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TCO13MM3.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9E76F73D1761D59E00A479A0 /* CirclesSeparation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CirclesSeparation.cpp; sourceTree = "<group>"; };
 		9E76F73E1761D59E00A479A0 /* CirclesSeparation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CirclesSeparation.h; sourceTree = "<group>"; };
+		9E76F740176372F000A479A0 /* TestCases.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TestCases.h; sourceTree = "<group>"; };
 		A3655DD4760A47A4B0CBDFDE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A3E28EB04AE64EB7AF849F0A /* TCO13MM3App.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.cpp; name = TCO13MM3App.cpp; path = ../src/TCO13MM3App.cpp; sourceTree = "<group>"; };
 		DA85039BEFEA49868A020E95 /* CinderApp.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; name = CinderApp.icns; path = ../resources/CinderApp.icns; sourceTree = "<group>"; };
@@ -73,6 +74,7 @@
 				A3E28EB04AE64EB7AF849F0A /* TCO13MM3App.cpp */,
 				9E76F73D1761D59E00A479A0 /* CirclesSeparation.cpp */,
 				9E76F73E1761D59E00A479A0 /* CirclesSeparation.h */,
+				9E76F740176372F000A479A0 /* TestCases.h */,
 			);
 			name = Source;
 			sourceTree = "<group>";
