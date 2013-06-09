@@ -1,18 +1,8 @@
-//
-//  CirclesSeparation.h
-//  TCO13MM3
-//
-//  Created by fuqinho on 6/7/13.
-//
-//
-
-#ifndef __TCO13MM3__CirclesSeparation__
-#define __TCO13MM3__CirclesSeparation__
-
 #include <iostream>
 #include <vector>
 #include <ctime>
 #include <cmath>
+#include <sys/time.h>
 using namespace std;
 
 class Vec {
@@ -47,7 +37,48 @@ int ccw(const Vec& a, const Vec& b) {double cp=cross(a, b); return cp ? (cp>0?1:
 const double INF = 1e100;
 const double G = 9.8;
 const double E = 0.0;
-const int RESTART_FRAME = 3000;
+const double TIME_PER_FRAME = 0.001;
+const int RESTART_FRAME = 10000;
+
+#define MAX_CIRCLE_NUM 512
+pair<double, pair<int, bool> > xs[MAX_CIRCLE_NUM * 2];
+pair<int, int> pairs[MAX_CIRCLE_NUM * 100];
+
+#define PROFILE 0
+class Profiler {
+public:
+    int last;
+    long long acc[100];
+    Profiler() {
+#if PROFILE
+        memset(acc, 0, sizeof(acc));
+#endif
+    }
+    void start() {
+#if PROFILE
+        struct timeval  tv;
+        gettimeofday(&tv, NULL);
+        last = tv.tv_usec;
+#endif
+    }
+    void end(int id) {
+#if PROFILE
+        struct timeval  tv;
+        gettimeofday(&tv, NULL);
+        int elapsed = (tv.tv_usec - last + 1000000) % 1000000;
+        acc[id] += elapsed;
+#endif
+    }
+    void report() {
+#if PROFILE
+        for (int i = 0; i < 100; i++) if (acc[i] > 0) {
+            cerr << i << ": " << acc[i] / 1000.0 << "(ms), ";
+        }
+        cerr << endl;
+        memset(acc, 0, sizeof(acc));
+#endif
+    }
+};
 
 unsigned int randxor() {
     static unsigned int x=123456789,y=362436069,z=521288629,w=88675123;
@@ -60,6 +91,8 @@ struct Circle {
     double r, m;
     Vec o_pos, pos, v;
     bool is_hover;
+    double cost;
+    double inv_r2;
 };
 
 bool greaterMass(const Circle& lhs, const Circle& rhs) {
@@ -75,6 +108,7 @@ private:
     vector<Circle> c;
     Circle* hover_circle;
     int frames;
+    Profiler prof;
     
 public:
     CirclesSeparation() {
@@ -95,6 +129,7 @@ public:
             c[i].r = r[i];
             c[i].m = m[i];
             c[i].is_hover = false;
+            c[i].inv_r2 = 1.0 / r[i] / r[i];
         }
         
         // determine initial position
@@ -112,7 +147,6 @@ public:
         vector<pair<double, int> > scores(N);
         double totalArea = 0;
         for (int i = 0; i < N; i++) {
-            double len_from_center = (Vec(0.5, 0.5) - c[i].pos).length();
             double mass = c[i].m;
             double area = c[i].r * c[i].r;
             double jama = area / mass / mass;
@@ -135,77 +169,135 @@ public:
          */
         double thresh = 0.8 + 0.4 * (double)rand() / RAND_MAX;
         double filledArea = 0.0;
+        vector<pair<double, int> > outers;
         for (int i = 0; i < N; i++) {
             int index = scores[i].second;
             if (filledArea > thresh) {
+                outers.push_back(pair<double, int>(-c[i].m * c[i].inv_r2, index));
+                /*
                 Vec d = c[index].pos - Vec(0.5, 0.5);
                 d.normalize();
-                c[index].pos += d * 2;
+                c[index].pos += d * 5;
+                 */
             } else {
                 filledArea += c[index].r * c[index].r * 3.14;
             }
         }
+        for (int i = 0; i < outers.size(); i++) {
+            int index = outers[i].second;
+            Vec d = c[index].pos - Vec(0.5, 0.5);
+            d.normalize();
+            c[index].pos += d * (3 + ((double)i / outers.size()) * 2);
+        }
     }
     
-    void update(double dt) {
+    void update() {
         frames++;
         
-        // FORCE to the original position
+        ////////////////////////////////
+        // apply force
+        prof.start();
         for (int i = 0; i < N; i++) {
             Vec d = c[i].o_pos - c[i].pos;
-            double len = d.length();
-            if (len < 1e-5) continue;
             d.normalize();
-            c[i].v += d * G * dt * (0.5 + c[i].m);
+            double mul = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
+            c[i].v += d * mul;
         }
+        prof.end(0);
+
+        ////////////////////////////////
+        // broad phase
+        prof.start();
+        int num_xs = 0;
+        for (int i = 0; i < N; i++) {
+            xs[num_xs].first = c[i].pos.x - c[i].r - 0.001;
+            xs[num_xs].second.first = i;
+            xs[num_xs].second.second = true;
+            num_xs++;
+            xs[num_xs].first = c[i].pos.x + c[i].r + 0.001;
+            xs[num_xs].second.first = i;
+            xs[num_xs].second.second = false;
+            num_xs++;
+        }
+        sort(xs, xs + num_xs);
         
-        // FORCE by the collision
-        //if (frames % RESTART_FRAME > 300) {
-            double CD = 0.7 / dt;
-            for (int i = 0; i < N; i++) {
-                for (int j = i+1; j < N; j++) {
-                    if (c[i].is_hover || c[j].is_hover) continue;
-                    Vec d = c[j].pos - c[i].pos;
-                    if (d.isSmallerThan(c[i].r + c[j].r + 0.003)) {
-                        Vec dv = c[j].v - c[i].v;
-                        Vec norm = d;
-                        norm.normalize();
-                        double D = max(0.0, c[i].r + c[j].r  + 0.003 - d.length());
-                        double C = c[i].m * c[j].m / (c[i].m + c[j].m) * ((1 + E) * dot(dv, norm) - CD*D);
-                        c[i].v += norm * C / (c[i].m);
-                        c[j].v -= norm * C / (c[j].m);
+        int num_pairs = 0;
+        for (int i = 0; i < num_xs; i++) {
+            if (xs[i].second.second) {
+                int a = xs[i].second.first;
+                for (int j = i+1; j < num_xs; j++) {
+                    if (xs[j].second.first == a) break;
+                    if (xs[j].second.second) {
+                        int b = xs[j].second.first;
+                        if (abs(c[a].pos.y - c[b].pos.y) < c[a].r + c[b].r + 0.001) {
+                            pairs[num_pairs++] = make_pair(a, b);
+                        }
                     }
                 }
             }
-        //}
-    
+        }
+        prof.end(1);
+        
+        ////////////////////////////////
+        // detect collision and solve constraints
+        prof.start();
+        double CD = 0.6 / TIME_PER_FRAME;
+        for (int k = 0; k < num_pairs; k++) {
+            int i = pairs[k].first;
+            int j = pairs[k].second;
+            if (c[i].is_hover || c[j].is_hover) continue;
+            Vec d = c[j].pos - c[i].pos;
+            
+            if (d.isSmallerThan(c[i].r + c[j].r + 0.001)) {
+                Vec dv = c[j].v - c[i].v;
+                Vec norm = d;
+                norm.normalize();
+                double D = max(0.0, c[i].r + c[j].r  + 0.001 - d.length());
+                double C = c[i].m * c[j].m / (c[i].m + c[j].m) * ((1 + E) * dot(dv, norm) - CD*D);
+                c[i].v += norm * C / (c[i].m);
+                c[j].v -= norm * C / (c[j].m);
+            }
+        }
+        prof.end(2);
+        
         // add friction
         for (int i = 0; i < N; i++) {
-            c[i].v *= 0.95;
+            c[i].v *= 0.98;
         }
     
-        // move
+        ////////////////////////////////
+        // integrate
+        prof.start();
         for (int i = 0; i < N; i++) {
-            c[i].pos += c[i].v * dt;
+            c[i].pos += c[i].v * TIME_PER_FRAME;
         }
+        prof.end(4);
         
-        if (frames % 100 == 0) {
+        
+        if (frames % 300 == 0) {
             for (int i = N-1; i >= 0; i--) {
                 for (int j = 0; j < i; j++) {
                     if ((c[i].pos - c[j].pos).isSmallerThan(c[i].r + c[j].r)) {
-                        Vec d = c[i].pos - Vec(0.5, 0.5);
+                        int moved = j;
+                        if (c[j].m / c[j].r / c[j].r > c[i].m / c[i].r / c[i].r) moved = i;
+                        Vec d = c[moved].pos - Vec(0.5, 0.5);
                         d.normalize();
-                        c[i].pos += d * 1;
+                        c[moved].pos += d * 1;
                     }
                 }
             }
         }
         
-        if (frames % 10 == 0)
-        updateBest();
+        
+        if (frames % 100 == 0)
+            updateBest();
         
         if (frames % RESTART_FRAME == 0) {
             restart();
+        }
+        
+        if (frames % 10000 == 0) {
+            prof.report();
         }
     }
     
@@ -250,13 +342,16 @@ public:
         }
     }
     
-    vector<double> minimumWork(vector<double> x_, vector<double> y_, vector<double> r, vector<double> m)
+    vector<double> minimumWork(vector<double> x, vector<double> y, vector<double> r, vector<double> m)
     {
-        const double MAX_SEC = 8.5;
+        //const double MAX_SEC = 9.5;
+        const double MAX_SEC = 1.4;
         clock_t end__ = clock() + MAX_SEC * CLOCKS_PER_SEC;
         
-        setup(x_, y_, r, m);
-        while (clock() < end__) update(0.003);
+        setup(x, y, r, m);
+        while (clock() < end__) for (int i=0; i<100; i++) update();
+        
+        //cerr << "frames: " << frames << endl;
         
         vector<double> res;
         for (int i = 0; i < N; i++) {
@@ -285,8 +380,8 @@ private:
         if (hasOverlap()) return;
         
         double cost = currentCost();
-        cerr << "cost: " << cost << endl;
         if (best_cost > cost) {
+            //cerr << "cost: " << cost << endl;
             best_cost = cost;
             for (int i = 0; i < N; i++) {
                 best_x[c[i].index] = c[i].pos.x;
@@ -295,5 +390,3 @@ private:
         }
     }
 };
-
-#endif /* defined(__TCO13MM3__CirclesSeparation__) */

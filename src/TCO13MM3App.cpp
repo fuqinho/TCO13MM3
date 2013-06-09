@@ -13,12 +13,11 @@ using namespace std;
 
 const int SCREEN_W = 800;
 const int SCREEN_H = 600;
-const int MAX_N = 600;
-double csx[MAX_N];
-double csy[MAX_N];
-double cx[MAX_N];
-double cy[MAX_N];
-double cr[MAX_N];
+double csx[512];
+double csy[512];
+double cx[512];
+double cy[512];
+double cr[512];
 
 class TCO13MM3App : public AppNative {
 public:
@@ -77,8 +76,8 @@ void TCO13MM3App::mouseDrag( MouseEvent event )
 
 void TCO13MM3App::update()
 {
-    for (int i=0; i<5; i++)
-    solution->update(0.003);
+    for (int i=0; i<20; i++)
+    solution->update();
 }
 
 void TCO13MM3App::draw()
