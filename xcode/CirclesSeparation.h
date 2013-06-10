@@ -113,6 +113,9 @@ bool greaterMass(const Circle& lhs, const Circle& rhs) {
 // state variables
 int N;
 Circle c[MAX_N];
+double best_cost;
+double best_x[MAX_N];
+double best_y[MAX_N];
 
 // computing buffers and precomputed values
 struct XS {
@@ -124,31 +127,22 @@ struct XS {
     }
 };
 XS xs[MAX_N * 2];
-struct Pair {
-    int a, b;
-};
 int pairs[MAX_N * 8];
 double m_mul_div_sum[MAX_N][MAX_N];
 
 class CirclesSeparation {
 private:
-    double best_cost;
-    vector<double> best_x, best_y;
-    Circle* hover_circle;
-    int frames;
-    
+    Circle* hover_circle_;
+    int frames_;
+    int total_frames_;
 public:
-    CirclesSeparation() {
-        hover_circle = NULL;
-        frames = 0;
+    CirclesSeparation(): hover_circle_(NULL), frames_(0), total_frames_(0)
+    {
     }
     
     void setup(vector<double> x, vector<double> y, vector<double> r, vector<double> m) {
         srand(10);
         N = x.size();
-        best_x = vector<double>(N);
-        best_y = vector<double>(N);
-        best_cost = INF;
         for (int i = 0; i < N; i++) {
             c[i].index = i;
             c[i].pos = c[i].o_pos = Vec(x[i], y[i]);
@@ -171,6 +165,8 @@ public:
     }
     
     void restart() {
+        // clear states
+        frames_ = 0;
         for (int i = 0; i < N; i++) {
             c[i].v.clear();
             c[i].pos = c[i].o_pos;
@@ -210,7 +206,8 @@ public:
     }
     
     void update() {
-        frames++;
+        frames_++;
+        total_frames_++;
         
         ///////////////////////////////////////////////////////
         // apply force
@@ -221,13 +218,12 @@ public:
             //double mul = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
             c[i].v += d * c[i].gravity;
         }
-        PROF_END(0);
         
         // shake
         static int shake_dir = 0;
         static const int DX[] = {-1, 1, 0, 0};
         static const int DY[] = {0 ,0, -1, 1};
-        if (frames % 2000 == 0) {
+        if (frames_ % 2000 == 0) {
             if (hasOverlap()) {
                 expandBalls();
             } else {
@@ -237,7 +233,7 @@ public:
                 shake_dir = (shake_dir + 1) % 4;
             }
         }
-        
+        PROF_END(0);
 
         ///////////////////////////////////////////////////////
         // broad phase
@@ -309,39 +305,16 @@ public:
         
         ///////////////////////////////////////////////////////
         // others
-        
-        // kick circles which have overlap
         PROF_START();
-    /*
-        if (frames % 300 == 0) {
-            bool need_shake = false;
-            for (int i = N-1; i >= 0; i--) {
-                for (int j = 0; j < i; j++) {
-                    if ((c[i].pos - c[j].pos).isSmallerThan(c[i].r + c[j].r)) {
-     
-                        int moved = j;
-                        if (c[j].m * c[j].inv_r2 > c[i].m * c[i].inv_r2) moved = i;
-                        Vec d = c[moved].pos - Vec(0.5, 0.5);
-                        d.normalize();
-                        c[moved].pos += d * 1;
-                    }
-                }
-            }
-        OUTER:
-            if (need_shake) 
-        }
-        */
-        
-        if (frames % 100 == 0)
+        if (frames_ % 100 == 0) {
             updateBest();
-
-        
-        if (frames % RESTART_FRAME == 0) {
+        }
+        if (frames_ >= RESTART_FRAME) {
             restart();
         }
         PROF_END(5);
         
-        if (frames % 10000 == 0) {
+        if (total_frames_ % 10000 == 0) {
             PROF_REPORT();
         }
     }
@@ -356,7 +329,7 @@ public:
     }
                 
     int currentFrame() {
-        return frames;
+        return frames_;
     }
         
     void catch_circle(Vec pos) {
@@ -364,22 +337,22 @@ public:
             if ((pos - c[i].pos).isSmallerThan(c[i].r)) {
                 c[i].is_hover = true;
                 c[i].v.clear();
-                hover_circle = &c[i];
+                hover_circle_ = &c[i];
                 break;
             }
         }
     }
     
     void move_circle(Vec pos) {
-        if (hover_circle) {
-            hover_circle->pos = pos;
+        if (hover_circle_) {
+            hover_circle_->pos = pos;
         }
     }
     
     void release_circle() {
-        if (hover_circle) {
-            hover_circle->is_hover = false;
-            hover_circle = NULL;
+        if (hover_circle_) {
+            hover_circle_->is_hover = false;
+            hover_circle_ = NULL;
         }
     }
     
@@ -391,7 +364,7 @@ public:
         while (clock() < end__) for (int i=0; i<100; i++) update();
         
 #if PRINT_FRAMES
-        cerr << "frames: " << frames << endl;
+        cerr << "total_frames: " << total_frames_ << endl;
 #endif
         
         vector<double> res;
