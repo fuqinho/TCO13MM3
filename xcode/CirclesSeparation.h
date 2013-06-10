@@ -6,17 +6,19 @@
 using namespace std;
 
 // flags
-#define PROFILE 1
+#define PROFILE 0
 
 // constant values
+const int MAX_N = 512;
 const double MAX_RUNNING_TIME = 9.5;
 //const double MAX_RUNNING_TIME = 1.4;
 const double INF = 1e100;
 const double G = 9.8;
 const double E = 0.0;
-const double TIME_PER_FRAME = 0.001;
-const int RESTART_FRAME = 12000;
-const int MAX_N = 512;
+const double DECAY_PER_FRAME = 0.008;
+const double TIME_PER_FRAME = 0.0005;
+const int RESTART_FRAME = 18000;
+const double BOUNCE_MARGIN = 0.00025;
 
 #if PROFILE
 class Profiler {
@@ -123,9 +125,8 @@ XS xs[MAX_N * 2];
 struct Pair {
     int a, b;
 };
-Pair pairs[MAX_N * 8];
+int pairs[MAX_N * 8];
 double m_mul_div_sum[MAX_N][MAX_N];
-
 
 class CirclesSeparation {
 private:
@@ -161,8 +162,8 @@ public:
 
         // precompute fixed values
         for (int i = 0; i < N; i++) for (int j = i; j < N; j++) {
-            m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
             c[i].gravity = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
+            m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
         }
         restart();
     }
@@ -219,17 +220,23 @@ public:
             c[i].v += d * c[i].gravity;
         }
         PROF_END(0);
+        
+        if (frames % 2500 == 1) {
+            for (int i = 0; i < N; i++) {
+                c[i].v += Vec(-1, 0.0);
+            }
+        }
 
         ///////////////////////////////////////////////////////
         // broad phase
         PROF_START();
         int num_xs = 0;
         for (int i = 0; i < N; i++) {
-            xs[num_xs].x = c[i].pos.x - c[i].r - 0.001;
+            xs[num_xs].x = c[i].pos.x - c[i].r - BOUNCE_MARGIN;
             xs[num_xs].index = i;
             xs[num_xs].is_left = true;
             num_xs++;
-            xs[num_xs].x = c[i].pos.x + c[i].r + 0.001;
+            xs[num_xs].x = c[i].pos.x + c[i].r + BOUNCE_MARGIN;
             xs[num_xs].index = i;
             xs[num_xs].is_left = false;
             num_xs++;
@@ -245,10 +252,8 @@ public:
                 for (int j = i+1; j < num_xs; j++) {
                     int b = xs[j].index;
                     if (b == a) break;
-                    if (xs[j].is_left && abs(c[a].pos.y - c[b].pos.y) < c[a].r + c[b].r + 0.001) {
-                        pairs[num_pairs].a = a;
-                        pairs[num_pairs].b = b;
-                        num_pairs++;
+                    if (xs[j].is_left && abs(c[a].pos.y - c[b].pos.y) < c[a].r + c[b].r + BOUNCE_MARGIN*2) {
+                        pairs[num_pairs++] = (a << 16) | b;
                     }
                 }
             }
@@ -258,17 +263,17 @@ public:
         ///////////////////////////////////////////////////////
         // detect collision and solve constraints
         PROF_START();
-        const double CD = 0.6 / TIME_PER_FRAME;
+        const double CD = 0.2 / TIME_PER_FRAME;
         for (int k = 0; k < num_pairs; k++) {
-            int i = pairs[k].a;
-            int j = pairs[k].b;
+            int i = pairs[k] >> 16;
+            int j = pairs[k] & ((1<<16)-1);
             if (c[i].is_hover || c[j].is_hover) continue;
             Vec d = c[j].pos - c[i].pos;
-            if (d.isSmallerThan(c[i].r + c[j].r + 0.001)) {
+            if (d.isSmallerThan(c[i].r + c[j].r + BOUNCE_MARGIN*2)) {
                 Vec dv = c[j].v - c[i].v;
                 double len = d.length();
                 Vec norm = d / len;
-                double CDD = CD * (c[i].r + c[j].r  + 0.001 - len);
+                double CDD = CD * (c[i].r + c[j].r  + BOUNCE_MARGIN*2 - len);
                 double C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
                 c[i].v += norm * C * c[i].inv_m;
                 c[j].v -= norm * C * c[j].inv_m;
@@ -278,7 +283,7 @@ public:
         
         // add friction
         for (int i = 0; i < N; i++) {
-            c[i].v *= 0.98;
+            c[i].v *= 1 - DECAY_PER_FRAME;
         }
 
 
@@ -294,12 +299,14 @@ public:
         // others
         
         // kick circles which have overlap
+        PROF_START();
+        /*
         if (frames % 300 == 0) {
             for (int i = N-1; i >= 0; i--) {
                 for (int j = 0; j < i; j++) {
                     if ((c[i].pos - c[j].pos).isSmallerThan(c[i].r + c[j].r)) {
                         int moved = j;
-                        if (c[j].m / c[j].r / c[j].r > c[i].m / c[i].r / c[i].r) moved = i;
+                        if (c[j].m * c[j].inv_r2 > c[i].m * c[i].inv_r2) moved = i;
                         Vec d = c[moved].pos - Vec(0.5, 0.5);
                         d.normalize();
                         c[moved].pos += d * 1;
@@ -307,6 +314,8 @@ public:
                 }
             }
         }
+         */
+        
         
         if (frames % 100 == 0)
             updateBest();
@@ -315,6 +324,7 @@ public:
         if (frames % RESTART_FRAME == 0) {
             restart();
         }
+        PROF_END(5);
         
         if (frames % 10000 == 0) {
             PROF_REPORT();
@@ -365,7 +375,7 @@ public:
         setup(x, y, r, m);
         while (clock() < end__) for (int i=0; i<100; i++) update();
         
-        cerr << "frames: " << frames << endl;
+        //cerr << "frames: " << frames << endl;
         
         vector<double> res;
         for (int i = 0; i < N; i++) {
