@@ -228,10 +228,14 @@ public:
         static const int DX[] = {-1, 1, 0, 0};
         static const int DY[] = {0 ,0, -1, 1};
         if (frames % 2000 == 0) {
-            for (int i = 0; i < N; i++) {
-                c[i].v += Vec(DX[shake_dir], DY[shake_dir]);
+            if (hasOverlap()) {
+                expandBalls();
+            } else {
+                for (int i = 0; i < N; i++) {
+                    c[i].v += Vec(DX[shake_dir], DY[shake_dir]);
+                }
+                shake_dir = (shake_dir + 1) % 4;
             }
-            shake_dir = (shake_dir + 1) % 4;
         }
         
 
@@ -412,6 +416,12 @@ private:
                 if (isOverlap(i, j))
                     return true;
         return false;
+    }
+    
+    void expandBalls() {
+        for (int i = 0; i < N; i++) {
+            c[i].pos *= 1.1;
+        }
     }
     
     void updateBest() {
