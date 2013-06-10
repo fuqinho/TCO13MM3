@@ -7,6 +7,8 @@ using namespace std;
 
 // flags
 #define PROFILE 0
+#define PRINT_FRAMES 1
+#define PRINT_SCORE_UPDATES 0
 
 // constant values
 const int MAX_N = 512;
@@ -15,9 +17,9 @@ const double MAX_RUNNING_TIME = 9.5;
 const double INF = 1e100;
 const double G = 9.8;
 const double E = 0.0;
-const double DECAY_PER_FRAME = 0.008;
+const double DECAY_PER_FRAME = 0.003;
 const double TIME_PER_FRAME = 0.0005;
-const int RESTART_FRAME = 18000;
+const int RESTART_FRAME = 7500;
 const double BOUNCE_MARGIN = 0.00025;
 
 #if PROFILE
@@ -221,11 +223,17 @@ public:
         }
         PROF_END(0);
         
-        if (frames % 2500 == 1) {
+        // shake
+        static int shake_dir = 0;
+        static const int DX[] = {-1, 1, 0, 0};
+        static const int DY[] = {0 ,0, -1, 1};
+        if (frames % 2000 == 0) {
             for (int i = 0; i < N; i++) {
-                c[i].v += Vec(-1, 0.0);
+                c[i].v += Vec(DX[shake_dir], DY[shake_dir]);
             }
+            shake_dir = (shake_dir + 1) % 4;
         }
+        
 
         ///////////////////////////////////////////////////////
         // broad phase
@@ -300,11 +308,13 @@ public:
         
         // kick circles which have overlap
         PROF_START();
-        /*
+    /*
         if (frames % 300 == 0) {
+            bool need_shake = false;
             for (int i = N-1; i >= 0; i--) {
                 for (int j = 0; j < i; j++) {
                     if ((c[i].pos - c[j].pos).isSmallerThan(c[i].r + c[j].r)) {
+     
                         int moved = j;
                         if (c[j].m * c[j].inv_r2 > c[i].m * c[i].inv_r2) moved = i;
                         Vec d = c[moved].pos - Vec(0.5, 0.5);
@@ -313,9 +323,10 @@ public:
                     }
                 }
             }
+        OUTER:
+            if (need_shake) 
         }
-         */
-        
+        */
         
         if (frames % 100 == 0)
             updateBest();
@@ -375,7 +386,9 @@ public:
         setup(x, y, r, m);
         while (clock() < end__) for (int i=0; i<100; i++) update();
         
-        //cerr << "frames: " << frames << endl;
+#if PRINT_FRAMES
+        cerr << "frames: " << frames << endl;
+#endif
         
         vector<double> res;
         for (int i = 0; i < N; i++) {
@@ -406,7 +419,9 @@ private:
         
         double cost = currentCost();
         if (best_cost > cost) {
-            //cerr << "cost: " << cost << endl;
+#if PRINT_SCORE_UPDATES
+            cerr << "cost: " << cost << endl;
+#endif
             best_cost = cost;
             for (int i = 0; i < N; i++) {
                 best_x[c[i].index] = c[i].pos.x;
