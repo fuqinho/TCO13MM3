@@ -17,10 +17,10 @@ const double MAX_RUNNING_TIME = 9.5;
 const double INF = 1e100;
 const double G = 9.8;
 const double E = 0.0;
-const double DECAY_PER_FRAME = 0.004;
+const double DECAY_PER_FRAME = 0.002;
 const double TIME_PER_FRAME = 0.0005;
 const int RESTART_FRAME = 7500;
-const double BOUNCE_MARGIN = 0.0003;
+const double BOUNCE_MARGIN = 0.0002;
 
 #if PROFILE
 class Profiler {
@@ -249,6 +249,7 @@ public:
                 shake_dir = (shake_dir + 1) % 4;
             }
         }
+         
         PROF_END(0);
 
         ///////////////////////////////////////////////////////
@@ -288,7 +289,7 @@ public:
         // detect collision and solve constraints
         PROF_START();
         double CD = 0.6 / TIME_PER_FRAME;
-        if (frames_ < 100) CD = 0.1 / TIME_PER_FRAME;
+        if (frames_ < 300) CD = 0.03 / TIME_PER_FRAME;
         for (int k = 0; k < num_pairs; k++) {
             int i = pairs[k] >> 16;
             int j = pairs[k] & ((1<<16)-1);
