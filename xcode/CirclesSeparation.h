@@ -17,10 +17,10 @@ const double MAX_RUNNING_TIME = 9.5;
 const double INF = 1e100;
 const double G = 9.8;
 const double E = 0.0;
-const double DECAY_PER_FRAME = 0.003;
+const double DECAY_PER_FRAME = 0.004;
 const double TIME_PER_FRAME = 0.0005;
 const int RESTART_FRAME = 7500;
-const double BOUNCE_MARGIN = 0.00025;
+const double BOUNCE_MARGIN = 0.0003;
 
 #if PROFILE
 class Profiler {
@@ -164,7 +164,7 @@ public:
             // precompute values
             c[i].inv_r2 = 1.0 / r[i] / r[i];
             c[i].inv_m = 1.0 / m[i];
-            c[i].gravity = G * TIME_PER_FRAME * min(4.0, 1 + 0.001 * c[i].m * c[i].inv_r2);
+            c[i].gravity = G * TIME_PER_FRAME * min(4.0, 1 + 0.008 * c[i].m * c[i].m * c[i].inv_r2);
             
             // data for analysis
             input_stats_.max_r = max(input_stats_.max_r, r[i]);
@@ -217,7 +217,7 @@ public:
             int index = outer[i];
             Vec d = c[index].pos - Vec(0.5, 0.5);
             d.normalize();
-            c[index].pos += d * (3 + ((double)i / outer.size()) * 2);
+            c[index].pos += d * (2 + ((double)i / outer.size()) * 2);
         }
     }
     
@@ -237,9 +237,9 @@ public:
         
         // shake
         static int shake_dir = 0;
-        static const int DX[] = {-1, 1, 0, 0};
-        static const int DY[] = {0 ,0, -1, 1};
-        if (frames_ % 2000 == 0) {
+        static const double DX[] = {-1, 1, 0, 0};
+        static const double DY[] = {0 ,0, -1, 1};
+        if (frames_ % 2500 == 0) {
             if (hasOverlap()) {
                 expandBalls();
             } else {
@@ -287,7 +287,8 @@ public:
         ///////////////////////////////////////////////////////
         // detect collision and solve constraints
         PROF_START();
-        const double CD = 0.2 / TIME_PER_FRAME;
+        double CD = 0.6 / TIME_PER_FRAME;
+        if (frames_ < 100) CD = 0.1 / TIME_PER_FRAME;
         for (int k = 0; k < num_pairs; k++) {
             int i = pairs[k] >> 16;
             int j = pairs[k] & ((1<<16)-1);
