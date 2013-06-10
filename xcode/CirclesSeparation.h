@@ -5,47 +5,20 @@
 #include <sys/time.h>
 using namespace std;
 
-class Vec {
-public:
-    double x, y;
-    Vec() {};
-    Vec(double x, double y): x(x), y(y) {}
-    Vec& operator+=(const Vec& o) { x += o.x; y += o.y; return *this; }
-    Vec& operator-=(const Vec& o) { x -= o.x; y -= o.y; return *this; }
-    Vec& operator*=(const double m) { x *= m; y *= m; return *this; }
-    Vec& operator/=(const double m) { x /= m; y /= m; return *this; }
-    void clear() { x=0, y=0; }
-    double length() { return sqrt(x*x+y*y); }
-    bool isSmallerThan(double r) { return x*x + y*y < r*r; }
-    void normalize() { double l=length(); if(l!=0) {x/=l;y/=l;} }
-};
-bool operator==(const Vec& a, const Vec& b) {return a.x==b.x && a.y==b.y;}
-bool operator!=(const Vec& a, const Vec& b) {return !(a==b); }
-bool operator< (const Vec& a, const Vec& b) {return a.x<b.x || (!(b.x<a.x) && a.y<b.y);}
-bool operator<=(const Vec& a, const Vec& b) {return !(b<a);}
-bool operator> (const Vec& a, const Vec& b) {return b<a;}
-bool operator>=(const Vec& a, const Vec& b) {return !(a<b);}
-ostream& operator<<(ostream& o,const Vec& v) {o <<"(" << v.x << "," << v.y << ")"; return o;}
-Vec operator+(const Vec& a, const Vec& b) {return Vec(a.x+b.x,a.y+b.y);}
-Vec operator-(const Vec& a, const Vec& b) {return Vec(a.x-b.x,a.y-b.y);}
-Vec operator*(const Vec& a, const double m) {return Vec(a.x*m, a.y*m);}
-Vec operator/(const Vec& a, const double m) {return Vec(a.x/m, a.y/m);}
-double dot(const Vec& a, const Vec& b) {return a.x*b.x+a.y*b.y;}
-double cross(const Vec& a, const Vec& b) {return a.x*b.y-a.y*b.x;}
-int ccw(const Vec& a, const Vec& b) {double cp=cross(a, b); return cp ? (cp>0?1:-1) : 0;}
+// flags
+#define PROFILE 1
 
+// constant values
+const double MAX_RUNNING_TIME = 9.5;
+//const double MAX_RUNNING_TIME = 1.4;
 const double INF = 1e100;
 const double G = 9.8;
 const double E = 0.0;
 const double TIME_PER_FRAME = 0.001;
 const int RESTART_FRAME = 12000;
+const int MAX_N = 512;
 
-#define MAX_CIRCLE_NUM 512
-pair<double, pair<int, bool> > xs[MAX_CIRCLE_NUM * 2];
-pair<int, int> pairs[MAX_CIRCLE_NUM * 8];
-double m_mul_div_sum[MAX_CIRCLE_NUM][MAX_CIRCLE_NUM];
-
-#define PROFILE 0
+#if PROFILE
 class Profiler {
 public:
     int last;
@@ -72,18 +45,57 @@ public:
         memset(acc, 0, sizeof(acc));
     }
 };
-
+Profiler prof;
+#define PROF_START()    prof.start();
+#define PROF_END(id)    prof.end(id);
+#define PROF_REPORT()   prof.report();
+#else
+#define PROF_START()
+#define PROF_END(id)
+#define PROF_REPORT()
+#endif
+    
 unsigned int randxor() {
     static unsigned int x=123456789,y=362436069,z=521288629,w=88675123;
     unsigned int t;
     t=(x^(x<<11));x=y;y=z;z=w; return( w=(w^(w>>19))^(t^(t>>8)) );
 }
 
-struct Circle {
+class Vec {
+public:
+    double x, y;
+    Vec() {};
+    Vec(double x, double y): x(x), y(y) {}
+    Vec& operator+=(const Vec& o) { x += o.x; y += o.y; return *this; }
+    Vec& operator-=(const Vec& o) { x -= o.x; y -= o.y; return *this; }
+    Vec& operator*=(const double m) { x *= m; y *= m; return *this; }
+    Vec& operator/=(const double m) { x /= m; y /= m; return *this; }
+    void clear() { x=0, y=0; }
+    double length() { return sqrt(x*x+y*y); }
+    bool isSmallerThan(double r) { return x*x + y*y < r*r; }
+    void normalize() { double l=length(); if(l!=0) {x/=l;y/=l;} }
+};
+//ostream& operator<<(ostream& o,const Vec& v) {o << "(" << v.x << "," << v.y << ")"; return o;}
+Vec operator+(const Vec& a, const Vec& b) {return Vec(a.x+b.x,a.y+b.y);}
+Vec operator-(const Vec& a, const Vec& b) {return Vec(a.x-b.x,a.y-b.y);}
+Vec operator*(const Vec& a, const double m) {return Vec(a.x*m, a.y*m);}
+Vec operator/(const Vec& a, const double m) {return Vec(a.x/m, a.y/m);}
+double dot(const Vec& a, const Vec& b) {return a.x*b.x+a.y*b.y;}
+double cross(const Vec& a, const Vec& b) {return a.x*b.y-a.y*b.x;}
+int ccw(const Vec& a, const Vec& b) {double cp=cross(a, b); return cp ? (cp>0?1:-1) : 0;}
+
+struct Circle
+{
+    // states;
+    Vec pos, v;
+    bool is_hover;
+
+    // properties
     int index;
     double r, m;
-    Vec o_pos, pos, v;
-    bool is_hover;
+    Vec o_pos;
+    
+    // precomputed values
     double inv_r2;
     double inv_m;
     double gravity;
@@ -93,16 +105,34 @@ bool greaterMass(const Circle& lhs, const Circle& rhs) {
     return lhs.m > rhs.m;
 }
 
-class CirclesSeparation {
     
+// state variables
+int N;
+Circle c[MAX_N];
+
+// computing buffers and precomputed values
+struct XS {
+    double x;
+    int index;
+    bool is_left;
+    bool operator<(const XS& rhs) const {
+        return x < rhs.x;
+    }
+};
+XS xs[MAX_N * 2];
+struct Pair {
+    int a, b;
+};
+Pair pairs[MAX_N * 8];
+double m_mul_div_sum[MAX_N][MAX_N];
+
+
+class CirclesSeparation {
 private:
-    int N;
     double best_cost;
     vector<double> best_x, best_y;
-    vector<Circle> c;
     Circle* hover_circle;
     int frames;
-    Profiler prof;
     
 public:
     CirclesSeparation() {
@@ -113,11 +143,10 @@ public:
     void setup(vector<double> x, vector<double> y, vector<double> r, vector<double> m) {
         srand(10);
         N = x.size();
-        c = vector<Circle>(N);
         best_x = vector<double>(N);
         best_y = vector<double>(N);
         best_cost = INF;
-        for (int i = 0; i < x.size(); i++) {
+        for (int i = 0; i < N; i++) {
             c[i].index = i;
             c[i].pos = c[i].o_pos = Vec(x[i], y[i]);
             c[i].r = r[i];
@@ -128,14 +157,13 @@ public:
         }
         
         // determine initial position
-        sort(c.begin(), c.end(), greaterMass);
+        sort(c, c + N, greaterMass);
 
-        // precompute
+        // precompute fixed values
         for (int i = 0; i < N; i++) for (int j = i; j < N; j++) {
             m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
             c[i].gravity = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
         }
-
         restart();
     }
     
@@ -181,67 +209,59 @@ public:
     void update() {
         frames++;
         
-        ////////////////////////////////
+        ///////////////////////////////////////////////////////
         // apply force
-#if PROFILE
-        prof.start();
-#endif
+        PROF_START();
         for (int i = 0; i < N; i++) {
             Vec d = c[i].o_pos - c[i].pos;
             d.normalize();
             //double mul = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
             c[i].v += d * c[i].gravity;
         }
-#if PROFILE
-        prof.end(0);
-#endif
-        
-        ////////////////////////////////
+        PROF_END(0);
+
+        ///////////////////////////////////////////////////////
         // broad phase
-#if PRIFLE
-        prof.start();
-#endif
+        PROF_START();
         int num_xs = 0;
         for (int i = 0; i < N; i++) {
-            xs[num_xs].first = c[i].pos.x - c[i].r - 0.001;
-            xs[num_xs].second.first = i;
-            xs[num_xs].second.second = true;
+            xs[num_xs].x = c[i].pos.x - c[i].r - 0.001;
+            xs[num_xs].index = i;
+            xs[num_xs].is_left = true;
             num_xs++;
-            xs[num_xs].first = c[i].pos.x + c[i].r + 0.001;
-            xs[num_xs].second.first = i;
-            xs[num_xs].second.second = false;
+            xs[num_xs].x = c[i].pos.x + c[i].r + 0.001;
+            xs[num_xs].index = i;
+            xs[num_xs].is_left = false;
             num_xs++;
         }
         sort(xs, xs + num_xs);
+        PROF_END(1);
         
+        PROF_START()
         int num_pairs = 0;
         for (int i = 0; i < num_xs; i++) {
-            if (xs[i].second.second) {
-                int a = xs[i].second.first;
+            if (xs[i].is_left) {
+                int a = xs[i].index;
                 for (int j = i+1; j < num_xs; j++) {
-                    if (xs[j].second.first == a) break;
-                    if (xs[j].second.second) {
-                        int b = xs[j].second.first;
-                        if (abs(c[a].pos.y - c[b].pos.y) < c[a].r + c[b].r + 0.001) {
-                            pairs[num_pairs++] = make_pair(a, b);
-                        }
+                    int b = xs[j].index;
+                    if (b == a) break;
+                    if (xs[j].is_left && abs(c[a].pos.y - c[b].pos.y) < c[a].r + c[b].r + 0.001) {
+                        pairs[num_pairs].a = a;
+                        pairs[num_pairs].b = b;
+                        num_pairs++;
                     }
                 }
             }
         }
-#if PROFILE
-        prof.end(1);
-#endif
-        
-        ////////////////////////////////
+        PROF_END(2);
+
+        ///////////////////////////////////////////////////////
         // detect collision and solve constraints
-#if PROFILE
-        prof.start();
-#endif
+        PROF_START();
         const double CD = 0.6 / TIME_PER_FRAME;
         for (int k = 0; k < num_pairs; k++) {
-            int i = pairs[k].first;
-            int j = pairs[k].second;
+            int i = pairs[k].a;
+            int j = pairs[k].b;
             if (c[i].is_hover || c[j].is_hover) continue;
             Vec d = c[j].pos - c[i].pos;
             if (d.isSmallerThan(c[i].r + c[j].r + 0.001)) {
@@ -254,26 +274,24 @@ public:
                 c[j].v -= norm * C * c[j].inv_m;
             }
         }
-#if PROFILE
-        prof.end(2);
-#endif
+        PROF_END(3);
         
         // add friction
         for (int i = 0; i < N; i++) {
             c[i].v *= 0.98;
         }
 
-        ////////////////////////////////
+
+        ///////////////////////////////////////////////////////
         // integrate
-#if PROFILE
-        prof.start();
-#endif
+        PROF_START();
         for (int i = 0; i < N; i++) {
             c[i].pos += c[i].v * TIME_PER_FRAME;
         }
-#if PROFILE
-        prof.end(4);
-#endif
+        PROF_END(4);
+        
+        ///////////////////////////////////////////////////////
+        // others
         
         // kick circles which have overlap
         if (frames % 300 == 0) {
@@ -298,11 +316,9 @@ public:
             restart();
         }
         
-#if PROFILE
         if (frames % 10000 == 0) {
-            prof.report();
+            PROF_REPORT();
         }
-#endif
     }
     
     double currentCost() {
@@ -317,11 +333,7 @@ public:
     int currentFrame() {
         return frames;
     }
-    
-    const vector<Circle>& current_circles() const {
-        return c;
-    }
-    
+        
     void catch_circle(Vec pos) {
         for (int i = 0; i < N; i++) {
             if ((pos - c[i].pos).isSmallerThan(c[i].r)) {
@@ -348,14 +360,12 @@ public:
     
     vector<double> minimumWork(vector<double> x, vector<double> y, vector<double> r, vector<double> m)
     {
-        const double MAX_SEC = 9.5;
-        //const double MAX_SEC = 1.4;
-        clock_t end__ = clock() + MAX_SEC * CLOCKS_PER_SEC;
+        clock_t end__ = clock() + MAX_RUNNING_TIME * CLOCKS_PER_SEC;
         
         setup(x, y, r, m);
         while (clock() < end__) for (int i=0; i<100; i++) update();
         
-        //cerr << "frames: " << frames << endl;
+        cerr << "frames: " << frames << endl;
         
         vector<double> res;
         for (int i = 0; i < N; i++) {

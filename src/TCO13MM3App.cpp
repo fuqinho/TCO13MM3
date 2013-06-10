@@ -85,15 +85,13 @@ void TCO13MM3App::draw()
 	// clear out the window with black
 	gl::clear( Color( 1.0f, 1.0f, 1.0f ) );
     
-    const vector<Circle>& circles = solution->current_circles();
-    
     // calculate projection ratio
     double left = -0.5, right = 1.5, top = -0.5, bottom = 1.5;
-    for (int i = 0; i < circles.size(); i++) {
-        left = min(left, circles[i].pos.x - circles[i].r);
-        right = max(right, circles[i].pos.x + circles[i].r);
-        top = min(top, circles[i].pos.y - circles[i].r);
-        bottom = max(bottom, circles[i].pos.y + circles[i].r);
+    for (int i = 0; i < N; i++) {
+        left = min(left, c[i].pos.x - c[i].r);
+        right = max(right, c[i].pos.x + c[i].r);
+        top = min(top, c[i].pos.y - c[i].r);
+        bottom = max(bottom, c[i].pos.y + c[i].r);
     }
     double rate_w = SCREEN_W / (right - left);
     double rate_h = SCREEN_H / (bottom - top);
@@ -103,30 +101,30 @@ void TCO13MM3App::draw()
     prj_ratio = rate;
     
     // precompute position on the screen
-    for (int i = 0; i < circles.size(); i++) {
-        cx[i] = (circles[i].pos.x - left) * rate;
-        cy[i] = (circles[i].pos.y - top) * rate;
-        cr[i] = circles[i].r * rate;
-        csx[i] = (circles[i].o_pos.x - left) * rate;
-        csy[i] = (circles[i].o_pos.y - top) * rate;
+    for (int i = 0; i < N; i++) {
+        cx[i] = (c[i].pos.x - left) * rate;
+        cy[i] = (c[i].pos.y - top) * rate;
+        cr[i] = c[i].r * rate;
+        csx[i] = (c[i].o_pos.x - left) * rate;
+        csy[i] = (c[i].o_pos.y - top) * rate;
     }
     
     // draw inner circle
     gl::enableAlphaBlending();
-    for (int i = 0; i < circles.size(); i++) {
-        gl::color( ColorA ( 0.0f, 0.0f, 1.0, circles[i].m ) );
+    for (int i = 0; i < N; i++) {
+        gl::color( ColorA ( 0.0f, 0.0f, 1.0f, c[i].m ) );
         gl::drawSolidCircle(Vec2f(cx[i], cy[i]), cr[i]);
     }
     
     // draw circle edge
     gl::color( Color( 0.0f, 0.0f, 0.0f ) );
-    for (int i = 0; i < circles.size(); i++)
+    for (int i = 0; i < N; i++)
         gl::drawStrokedCircle(Vec2f(cx[i], cy[i]), cr[i]);
     
     // draw lines
-    for (int i = 0; i < circles.size(); i++) {
-        gl::lineWidth(8.0 * circles[i].m);
-        gl::color( ColorA( 1.0, 0.0, 0.0, circles[i].m ) );
+    for (int i = 0; i < N; i++) {
+        gl::lineWidth(8.0 * c[i].m);
+        gl::color( ColorA( 1.0f, 0.0f, 0.0f, c[i].m ) );
         gl::drawLine(Vec2f(cx[i], cy[i]), Vec2f(csx[i], csy[i]));
     }
     
