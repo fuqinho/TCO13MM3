@@ -8,7 +8,7 @@ using namespace std;
 // flags
 #define PROFILE 0
 #define PRINT_FRAMES 1
-#define PRINT_SCORE_UPDATES 0
+#define PRINT_SCORE_UPDATES 1
 
 // constant values
 const int MAX_N = 512;
@@ -109,6 +109,11 @@ bool greaterMass(const Circle& lhs, const Circle& rhs) {
     return lhs.m > rhs.m;
 }
 
+struct InputStats {
+    double total_area;
+    double max_r;
+    InputStats(): total_area(0.0), max_r(0.0) {}
+};
     
 // state variables
 int N;
@@ -135,22 +140,35 @@ private:
     Circle* hover_circle_;
     int frames_;
     int total_frames_;
+    int iteration_;
+    InputStats input_stats_;
 public:
-    CirclesSeparation(): hover_circle_(NULL), frames_(0), total_frames_(0)
+    CirclesSeparation(): hover_circle_(NULL), frames_(0), total_frames_(0), iteration_(0)
     {
     }
     
     void setup(vector<double> x, vector<double> y, vector<double> r, vector<double> m) {
         srand(10);
+        best_cost = INF;
+        
+        // read and analyze input data
         N = x.size();
         for (int i = 0; i < N; i++) {
+            // properties
             c[i].index = i;
             c[i].pos = c[i].o_pos = Vec(x[i], y[i]);
             c[i].r = r[i];
             c[i].m = m[i];
             c[i].is_hover = false;
+            
+            // precompute values
             c[i].inv_r2 = 1.0 / r[i] / r[i];
             c[i].inv_m = 1.0 / m[i];
+            c[i].gravity = G * TIME_PER_FRAME * min(4.0, 1 + 0.001 * c[i].m * c[i].inv_r2);
+            
+            // data for analysis
+            input_stats_.max_r = max(input_stats_.max_r, r[i]);
+            input_stats_.total_area += M_PI * r[i] * r[i];
         }
         
         // determine initial position
@@ -158,9 +176,9 @@ public:
 
         // precompute fixed values
         for (int i = 0; i < N; i++) for (int j = i; j < N; j++) {
-            c[i].gravity = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
             m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
         }
+        
         restart();
     }
     
@@ -172,36 +190,34 @@ public:
             c[i].pos = c[i].o_pos;
         }
         
+        // determine parameter
+        
         // determine initial position
-        vector<pair<double, int> > scores(N);
-        double totalArea = 0;
-        for (int i = 0; i < N; i++) {
-            double mass = c[i].m;
-            double area = c[i].r * c[i].r;
-            double jama = area / mass / mass;
-            scores[i] = make_pair(jama, i);
-            totalArea += 3.14*area;
-        }
-        
-        sort(scores.begin(), scores.end());
-        
-        // adjust initial filling rate
         double thresh = 0.8 + 0.4 * (double)rand() / RAND_MAX;
-        double filledArea = 0.0;
-        vector<pair<double, int> > outers;
+        
+        vector<pair<double, int> > priorities(N);
         for (int i = 0; i < N; i++) {
-            int index = scores[i].second;
+            double priority =  c[i].m * c[i].inv_r2;
+            priorities[i].first = priority;
+            priorities[i].second = i;
+        }
+        sort(priorities.rbegin(), priorities.rend());
+        
+        double filledArea = 0.0;
+        vector<int> outer;
+        for (int i = 0; i < N; i++) {
+            int index = priorities[i].second;
             if (filledArea > thresh) {
-                outers.push_back(pair<double, int>(-c[i].m * c[i].inv_r2, index));
+                outer.push_back(index);
             } else {
                 filledArea += c[index].r * c[index].r * 3.14;
             }
         }
-        for (int i = 0; i < outers.size(); i++) {
-            int index = outers[i].second;
+        for (int i = 0; i < outer.size(); i++) {
+            int index = outer[i];
             Vec d = c[index].pos - Vec(0.5, 0.5);
             d.normalize();
-            c[index].pos += d * (3 + ((double)i / outers.size()) * 2);
+            c[index].pos += d * (3 + ((double)i / outer.size()) * 2);
         }
     }
     
@@ -310,6 +326,7 @@ public:
             updateBest();
         }
         if (frames_ >= RESTART_FRAME) {
+            iteration_++;
             restart();
         }
         PROF_END(5);
