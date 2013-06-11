@@ -3,6 +3,7 @@
 #include <ctime>
 #include <cmath>
 #include <sys/time.h>
+#include <xmmintrin.h>
 using namespace std;
 
 // flags
@@ -91,13 +92,11 @@ int ccw(const Vec& a, const Vec& b) {float cp=cross(a, b); return cp ? (cp>0?1:-
 struct Circle
 {
     // states;
-    Vec pos, v;
     bool is_hover;
 
     // properties
     int index;
-    float r, m;
-    Vec o_pos;
+    float m;
     
     // precomputed values
     float inv_r2;
@@ -122,6 +121,27 @@ float best_cost;
 double best_x[MAX_N];
 double best_y[MAX_N];
 double input_r[MAX_N];
+
+float ball_x[MAX_N]__attribute__((aligned(16)));
+float ball_y[MAX_N]__attribute__((aligned(16)));
+float ball_r[MAX_N]__attribute__((aligned(16)));
+float ball_m[MAX_N]__attribute__((aligned(16)));
+float ball_vx[MAX_N]__attribute__((aligned(16)));
+float ball_vy[MAX_N]__attribute__((aligned(16)));
+float ball_ox[MAX_N]__attribute__((aligned(16)));
+float ball_oy[MAX_N]__attribute__((aligned(16)));
+int ball_index[MAX_N];
+
+float dot(float* v1, float* v2) {
+    return v1[0] * v2[0] + v1[1] * v2[1];
+}
+void normalize(float* v) {
+    float len = sqrt(v[0] * v[0] + v[1] * v[1]);
+    if (len != 0.0f) {
+        v[0] /= len;
+        v[1] /= len;
+    }
+}
 
 // computing buffers and precomputed values
 struct XS {
@@ -160,8 +180,6 @@ public:
             
             // properties
             c[i].index = i;
-            c[i].pos = c[i].o_pos = Vec(x[i], y[i]);
-            c[i].r = r[i];
             c[i].m = m[i];
             c[i].is_hover = false;
             
@@ -178,6 +196,16 @@ public:
         // determine initial position
         sort(c, c + N, greaterMass);
 
+        for (int i = 0; i < N; i++) {
+            ball_x[i] = ball_ox[i] = x[c[i].index];
+            ball_y[i] = ball_oy[i] = y[c[i].index];
+            ball_m[i] = m[c[i].index];
+            ball_r[i] = r[c[i].index];
+            ball_vx[i] = 0.0f;
+            ball_vy[i] = 0.0f;
+            ball_index[i] = c[i].index;
+        }
+        
         // precompute fixed values
         for (int i = 0; i < N; i++) for (int j = i; j < N; j++) {
             m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
@@ -190,8 +218,9 @@ public:
         // clear states
         frames_ = 0;
         for (int i = 0; i < N; i++) {
-            c[i].v.clear();
-            c[i].pos = c[i].o_pos;
+            ball_vx[i] = ball_vy[i] = 0.0f;
+            ball_x[i] = ball_ox[i];
+            ball_y[i] = ball_oy[i];
         }
         
         // determine parameter
@@ -201,7 +230,7 @@ public:
         
         vector<pair<float, int> > priorities(N);
         for (int i = 0; i < N; i++) {
-            float priority =  c[i].m * c[i].inv_r2;
+            float priority =  ball_m[i] * c[i].inv_r2; // TODO efficiency
             priorities[i].first = priority;
             priorities[i].second = i;
         }
@@ -214,18 +243,22 @@ public:
             if (filledArea > thresh) {
                 outer.push_back(index);
             } else {
-                filledArea += c[index].r * c[index].r * 3.14;
+                filledArea += ball_r[index] * ball_r[index] * 3.14;
             }
         }
         for (int i = 0; i < outer.size(); i++) {
             int index = outer[i];
-            Vec d = c[index].pos - Vec(0.5, 0.5);
-            d.normalize();
-            c[index].pos += d * (2 + ((float)i / outer.size()) * 2);
+            float d[2];
+            d[0] = ball_x[index] - 0.5f;
+            d[1] = ball_y[index] - 0.5f;
+            normalize(d);
+            ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 2);
+            ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 2);
         }
     }
     
     void update() {
+        
         frames_++;
         total_frames_++;
         
@@ -233,10 +266,12 @@ public:
         // apply force
         PROF_START();
         for (int i = 0; i < N; i++) {
-            Vec d = c[i].o_pos - c[i].pos;
-            d.normalize();
-            //float mul = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
-            c[i].v += d * c[i].gravity;
+            float d[2];
+            d[0] = ball_ox[i] - ball_x[i];
+            d[1] = ball_oy[i] - ball_y[i];
+            normalize(d);
+            ball_vx[i] += d[0] * c[i].gravity;
+            ball_vy[i] += d[1] * c[i].gravity;
         }
         
         // shake
@@ -248,12 +283,12 @@ public:
                 expandBalls();
             } else {
                 for (int i = 0; i < N; i++) {
-                    c[i].v += Vec(DX[shake_dir], DY[shake_dir]);
+                    ball_vx[i] += DX[shake_dir];
+                    ball_vy[i] += DY[shake_dir];
                 }
                 shake_dir = (shake_dir + 1) % 4;
             }
         }
-         
         PROF_END(0);
 
         ///////////////////////////////////////////////////////
@@ -261,11 +296,11 @@ public:
         PROF_START();
         int num_xs = 0;
         for (int i = 0; i < N; i++) {
-            xs[num_xs].x = c[i].pos.x - c[i].r - BOUNCE_MARGIN;
+            xs[num_xs].x = ball_x[i] - ball_r[i] - BOUNCE_MARGIN;
             xs[num_xs].index = i;
             xs[num_xs].is_left = true;
             num_xs++;
-            xs[num_xs].x = c[i].pos.x + c[i].r + BOUNCE_MARGIN;
+            xs[num_xs].x = ball_x[i] + ball_r[i] + BOUNCE_MARGIN;
             xs[num_xs].index = i;
             xs[num_xs].is_left = false;
             num_xs++;
@@ -281,7 +316,7 @@ public:
                 for (int j = i+1; j < num_xs; j++) {
                     int b = xs[j].index;
                     if (b == a) break;
-                    if (xs[j].is_left && abs(c[a].pos.y - c[b].pos.y) < c[a].r + c[b].r + BOUNCE_MARGIN*2) {
+                    if (xs[j].is_left && abs(ball_y[a] - ball_y[b]) < ball_r[a] + ball_r[b] + BOUNCE_MARGIN*2) {
                         pairs[num_pairs++] = (a << 16) | b;
                     }
                 }
@@ -292,41 +327,58 @@ public:
         ///////////////////////////////////////////////////////
         // detect collision and solve constraints
         PROF_START();
+        
         float CD = 0.6 / TIME_PER_FRAME;
         if (frames_ < 300) CD = 0.03 / TIME_PER_FRAME;
         for (int k = 0; k < num_pairs; k++) {
             int i = pairs[k] >> 16;
             int j = pairs[k] & ((1<<16)-1);
             if (c[i].is_hover || c[j].is_hover) continue;
-            Vec d = c[j].pos - c[i].pos;
-            if (d.isSmallerThan(c[i].r + c[j].r + BOUNCE_MARGIN*2)) {
-                Vec dv = c[j].v - c[i].v;
-                float len = d.length();
-                Vec norm = d / len;
-                float CDD = CD * (c[i].r + c[j].r  + BOUNCE_MARGIN*2 - len);
+            float norm[2];
+            norm[0] = ball_x[j] - ball_x[i];
+            norm[1] = ball_y[j] - ball_y[i];
+            float norm_dist2 = norm[0] * norm[0] + norm[1] * norm[1];
+            float minimum_distance = ball_r[i] + ball_r[j] + BOUNCE_MARGIN * 2.0f;
+
+            if (norm_dist2 < minimum_distance * minimum_distance) {
+                float dv[2];
+                dv[0] = ball_vx[j] - ball_vx[i];
+                dv[1] = ball_vy[j] - ball_vy[i];
+                float len = sqrt(norm_dist2);
+                norm[0] /= len;
+                norm[1] /= len;
+                float CDD = CD * (minimum_distance - len);
                 float C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
-                c[i].v += norm * C * c[i].inv_m;
-                c[j].v -= norm * C * c[j].inv_m;
+                
+                ball_vx[i] += norm[0] * C * c[i].inv_m;
+                ball_vy[i] += norm[1] * C * c[i].inv_m;
+                ball_vx[j] -= norm[0] * C * c[j].inv_m;
+                ball_vy[j] -= norm[1] * C * c[j].inv_m;
             }
         }
+        
         PROF_END(3);
         
         // add friction
         for (int i = 0; i < N; i++) {
-            c[i].v *= 1 - DECAY_PER_FRAME;
+            ball_vx[i] *= 1 - DECAY_PER_FRAME;
+            ball_vy[i] *= 1 - DECAY_PER_FRAME;
         }
 
-
+        
         ///////////////////////////////////////////////////////
         // integrate
         PROF_START();
         for (int i = 0; i < N; i++) {
-            c[i].pos += c[i].v * TIME_PER_FRAME;
+            ball_x[i] += ball_vx[i] * TIME_PER_FRAME;
+            ball_y[i] += ball_vy[i] * TIME_PER_FRAME;
         }
         PROF_END(4);
         
         ///////////////////////////////////////////////////////
         // others
+        
+        
         PROF_START();
         if (frames_ % 100 == 0) {
             updateBest();
@@ -336,7 +388,7 @@ public:
             restart();
         }
         PROF_END(5);
-        
+
         if (total_frames_ % 10000 == 0) {
             PROF_REPORT();
         }
@@ -345,8 +397,10 @@ public:
     float currentCost() {
         float cost = 0;
         for (int i = 0; i < N; i++) {
-            Vec d = c[i].pos - c[i].o_pos;
-            cost += d.length() * c[i].m;
+            float d[2];
+            d[0] = ball_x[i] - ball_ox[i];
+            d[1] = ball_y[i] - ball_oy[i];
+            cost += sqrt(d[0]*d[0]+d[1]*d[1]) * ball_m[i];
         }
         return cost;
     }
@@ -356,6 +410,7 @@ public:
     }
         
     void catch_circle(Vec pos) {
+        /*
         for (int i = 0; i < N; i++) {
             if ((pos - c[i].pos).isSmallerThan(c[i].r)) {
                 c[i].is_hover = true;
@@ -364,11 +419,12 @@ public:
                 break;
             }
         }
+         */
     }
     
     void move_circle(Vec pos) {
         if (hover_circle_) {
-            hover_circle_->pos = pos;
+            //hover_circle_->pos = pos;
         }
     }
     
@@ -402,11 +458,11 @@ private:
     
     bool isOverlap(int i, int j) {
         if (i == j) return false;
-        double dx = (double)c[i].pos.x;
-        dx -= (double)c[j].pos.x;
-        double dy = (double)c[i].pos.y;
-        dy -= (double)c[j].pos.y;
-        double rsum = input_r[c[i].index] + input_r[c[j].index];
+        double dx = (double)ball_x[i];
+        dx -= (double)ball_x[j];
+        double dy = (double)ball_y[i];
+        dy -= (double)ball_y[j];
+        double rsum = input_r[ball_index[i]] + input_r[ball_index[j]];
         return dx*dx + dy*dy < rsum*rsum;
     }
     
@@ -421,7 +477,8 @@ private:
     
     void expandBalls() {
         for (int i = 0; i < N; i++) {
-            c[i].pos *= 1.1;
+            ball_x[i] *= 1.1;
+            ball_y[i] *= 1.1;
         }
     }
     
@@ -435,8 +492,8 @@ private:
 #endif
             best_cost = cost;
             for (int i = 0; i < N; i++) {
-                best_x[c[i].index] = c[i].pos.x;
-                best_y[c[i].index] = c[i].pos.y;
+                best_x[ball_index[i]] = ball_x[i];
+                best_y[ball_index[i]] = ball_y[i];
             }
         }
     }

@@ -88,10 +88,10 @@ void TCO13MM3App::draw()
     // calculate projection ratio
     float left = -0.5, right = 1.5, top = -0.5, bottom = 1.5;
     for (int i = 0; i < N; i++) {
-        left = min(left, c[i].pos.x - c[i].r);
-        right = max(right, c[i].pos.x + c[i].r);
-        top = min(top, c[i].pos.y - c[i].r);
-        bottom = max(bottom, c[i].pos.y + c[i].r);
+        left = min(left, ball_x[i] - ball_r[i]);
+        right = max(right, ball_x[i] + ball_r[i]);
+        top = min(top, ball_y[i] - ball_r[i]);
+        bottom = max(bottom, ball_y[i] + ball_r[i]);
     }
     float rate_w = SCREEN_W / (right - left);
     float rate_h = SCREEN_H / (bottom - top);
@@ -102,11 +102,11 @@ void TCO13MM3App::draw()
     
     // precompute position on the screen
     for (int i = 0; i < N; i++) {
-        cx[i] = (c[i].pos.x - left) * rate;
-        cy[i] = (c[i].pos.y - top) * rate;
-        cr[i] = c[i].r * rate;
-        csx[i] = (c[i].o_pos.x - left) * rate;
-        csy[i] = (c[i].o_pos.y - top) * rate;
+        cx[i] = (ball_x[i] - left) * rate;
+        cy[i] = (ball_y[i] - top) * rate;
+        cr[i] = ball_r[i] * rate;
+        csx[i] = (ball_ox[i] - left) * rate;
+        csy[i] = (ball_oy[i] - top) * rate;
     }
     
     // draw inner circle
