@@ -59,8 +59,8 @@ void TCO13MM3App::setup()
 
 void TCO13MM3App::mouseDown( MouseEvent event )
 {
-    solution->catch_circle(Vec(prj_left + event.getX() / prj_ratio,
-                               prj_top + event.getY() / prj_ratio));
+    solution->catch_circle(prj_left + event.getX() / prj_ratio,
+                           prj_top + event.getY() / prj_ratio);
 }
 
 void TCO13MM3App::mouseUp( MouseEvent event )
@@ -70,8 +70,8 @@ void TCO13MM3App::mouseUp( MouseEvent event )
 
 void TCO13MM3App::mouseDrag( MouseEvent event )
 {
-    solution->move_circle(Vec(prj_left + event.getX() / prj_ratio,
-                              prj_top + event.getY() / prj_ratio));
+    solution->move_circle(prj_left + event.getX() / prj_ratio,
+                          prj_top + event.getY() / prj_ratio);
 }
 
 void TCO13MM3App::update()

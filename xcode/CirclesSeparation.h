@@ -9,7 +9,7 @@ using namespace std;
 // flags
 #define PROFILE 0
 #define PRINT_FRAMES 1
-#define PRINT_SCORE_UPDATES 1
+#define PRINT_SCORE_UPDATES 0
 
 // constant values
 const int MAX_N = 512;
@@ -59,41 +59,18 @@ Profiler prof;
 #define PROF_END(id)
 #define PROF_REPORT()
 #endif
-    
+
 unsigned int randxor() {
     static unsigned int x=123456789,y=362436069,z=521288629,w=88675123;
     unsigned int t;
     t=(x^(x<<11));x=y;y=z;z=w; return( w=(w^(w>>19))^(t^(t>>8)) );
 }
 
-class Vec {
-public:
-    float x, y;
-    Vec() {};
-    Vec(float x, float y): x(x), y(y) {}
-    Vec& operator+=(const Vec& o) { x += o.x; y += o.y; return *this; }
-    Vec& operator-=(const Vec& o) { x -= o.x; y -= o.y; return *this; }
-    Vec& operator*=(const float m) { x *= m; y *= m; return *this; }
-    Vec& operator/=(const float m) { x /= m; y /= m; return *this; }
-    void clear() { x=0, y=0; }
-    float length() { return sqrt(x*x+y*y); }
-    bool isSmallerThan(float r) { return x*x + y*y < r*r; }
-    void normalize() { float l=length(); if(l!=0) {x/=l;y/=l;} }
-};
-//ostream& operator<<(ostream& o,const Vec& v) {o << "(" << v.x << "," << v.y << ")"; return o;}
-Vec operator+(const Vec& a, const Vec& b) {return Vec(a.x+b.x,a.y+b.y);}
-Vec operator-(const Vec& a, const Vec& b) {return Vec(a.x-b.x,a.y-b.y);}
-Vec operator*(const Vec& a, const float m) {return Vec(a.x*m, a.y*m);}
-Vec operator/(const Vec& a, const float m) {return Vec(a.x/m, a.y/m);}
-float dot(const Vec& a, const Vec& b) {return a.x*b.x+a.y*b.y;}
-float cross(const Vec& a, const Vec& b) {return a.x*b.y-a.y*b.x;}
-int ccw(const Vec& a, const Vec& b) {float cp=cross(a, b); return cp ? (cp>0?1:-1) : 0;}
-
 struct Circle
 {
     // states;
     bool is_hover;
-
+    
     // properties
     int index;
     float m;
@@ -113,7 +90,7 @@ struct InputStats {
     float max_r;
     InputStats(): total_area(0.0), max_r(0.0) {}
 };
-    
+
 // state variables
 int N;
 Circle c[MAX_N];
@@ -136,7 +113,7 @@ float dot(float* v1, float* v2) {
     return v1[0] * v2[0] + v1[1] * v2[1];
 }
 void normalize(float* v) {
-    float len = sqrt(v[0] * v[0] + v[1] * v[1]);
+    float len = (float)sqrt(v[0] * v[0] + v[1] * v[1]);
     if (len != 0.0f) {
         v[0] /= len;
         v[1] /= len;
@@ -148,7 +125,7 @@ struct XS {
     float x;
     int index;
     bool is_left;
-    bool operator<(const XS& rhs) const {
+    bool operator< (const XS& rhs) const {
         return x < rhs.x;
     }
 };
@@ -158,13 +135,13 @@ float m_mul_div_sum[MAX_N][MAX_N];
 
 class CirclesSeparation {
 private:
-    Circle* hover_circle_;
+    int hover_circle_;
     int frames_;
     int total_frames_;
     int iteration_;
     InputStats input_stats_;
 public:
-    CirclesSeparation(): hover_circle_(NULL), frames_(0), total_frames_(0), iteration_(0)
+    CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), iteration_(0)
     {
     }
     
@@ -195,7 +172,7 @@ public:
         
         // determine initial position
         sort(c, c + N, greaterMass);
-
+        
         for (int i = 0; i < N; i++) {
             ball_x[i] = ball_ox[i] = x[c[i].index];
             ball_y[i] = ball_oy[i] = y[c[i].index];
@@ -249,8 +226,8 @@ public:
         for (int i = 0; i < outer.size(); i++) {
             int index = outer[i];
             float d[2];
-            d[0] = ball_x[index] - 0.5f;
-            d[1] = ball_y[index] - 0.5f;
+            d[0] = ball_x[index] - 0.5;
+            d[1] = ball_y[index] - 0.5;
             normalize(d);
             ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 2);
             ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 2);
@@ -258,7 +235,6 @@ public:
     }
     
     void update() {
-        
         frames_++;
         total_frames_++;
         
@@ -289,8 +265,9 @@ public:
                 shake_dir = (shake_dir + 1) % 4;
             }
         }
+        
         PROF_END(0);
-
+        
         ///////////////////////////////////////////////////////
         // broad phase
         PROF_START();
@@ -323,11 +300,10 @@ public:
             }
         }
         PROF_END(2);
-
+        
         ///////////////////////////////////////////////////////
         // detect collision and solve constraints
         PROF_START();
-        
         float CD = 0.6 / TIME_PER_FRAME;
         if (frames_ < 300) CD = 0.03 / TIME_PER_FRAME;
         for (int k = 0; k < num_pairs; k++) {
@@ -338,13 +314,13 @@ public:
             norm[0] = ball_x[j] - ball_x[i];
             norm[1] = ball_y[j] - ball_y[i];
             float norm_dist2 = norm[0] * norm[0] + norm[1] * norm[1];
-            float minimum_distance = ball_r[i] + ball_r[j] + BOUNCE_MARGIN * 2.0f;
-
+            float minimum_distance = ball_r[i] + ball_r[j] + BOUNCE_MARGIN*2;
+            
             if (norm_dist2 < minimum_distance * minimum_distance) {
                 float dv[2];
                 dv[0] = ball_vx[j] - ball_vx[i];
                 dv[1] = ball_vy[j] - ball_vy[i];
-                float len = sqrt(norm_dist2);
+                float len = (float)sqrt(norm_dist2);
                 norm[0] /= len;
                 norm[1] /= len;
                 float CDD = CD * (minimum_distance - len);
@@ -356,7 +332,6 @@ public:
                 ball_vy[j] -= norm[1] * C * c[j].inv_m;
             }
         }
-        
         PROF_END(3);
         
         // add friction
@@ -364,7 +339,7 @@ public:
             ball_vx[i] *= 1 - DECAY_PER_FRAME;
             ball_vy[i] *= 1 - DECAY_PER_FRAME;
         }
-
+        
         
         ///////////////////////////////////////////////////////
         // integrate
@@ -377,8 +352,6 @@ public:
         
         ///////////////////////////////////////////////////////
         // others
-        
-        
         PROF_START();
         if (frames_ % 100 == 0) {
             updateBest();
@@ -388,7 +361,7 @@ public:
             restart();
         }
         PROF_END(5);
-
+        
         if (total_frames_ % 10000 == 0) {
             PROF_REPORT();
         }
@@ -400,38 +373,41 @@ public:
             float d[2];
             d[0] = ball_x[i] - ball_ox[i];
             d[1] = ball_y[i] - ball_oy[i];
-            cost += sqrt(d[0]*d[0]+d[1]*d[1]) * ball_m[i];
+            cost += (float)sqrt(d[0]*d[0]+d[1]*d[1]) * ball_m[i];
         }
         return cost;
     }
-                
+    
     int currentFrame() {
         return frames_;
     }
-        
-    void catch_circle(Vec pos) {
-        /*
-        for (int i = 0; i < N; i++) {
-            if ((pos - c[i].pos).isSmallerThan(c[i].r)) {
-                c[i].is_hover = true;
-                c[i].v.clear();
-                hover_circle_ = &c[i];
-                break;
-            }
-        }
-         */
+    
+    void catch_circle(float x, float y) {
+         for (int i = 0; i < N; i++) {
+             float d[2];
+             d[0] = x - ball_x[i];
+             d[1] = y - ball_y[i];
+             if (d[0]*d[0] + d[1]*d[1] < ball_r[i]*ball_r[i]) {
+                 c[i].is_hover = true;
+                 ball_vx[i] = 0;
+                 ball_vy[i] = 0;
+                 hover_circle_ = i;
+                 break;
+             }
+         }
     }
     
-    void move_circle(Vec pos) {
-        if (hover_circle_) {
-            //hover_circle_->pos = pos;
+    void move_circle(float x, float y) {
+        if (hover_circle_ >= 0) {
+            ball_x[hover_circle_] = x;
+            ball_y[hover_circle_] = y;
         }
     }
     
     void release_circle() {
-        if (hover_circle_) {
-            hover_circle_->is_hover = false;
-            hover_circle_ = NULL;
+        if (hover_circle_ >= 0) {
+            c[hover_circle_].is_hover = false;
+            hover_circle_ = -1;
         }
     }
     
@@ -498,3 +474,4 @@ private:
         }
     }
 };
+
