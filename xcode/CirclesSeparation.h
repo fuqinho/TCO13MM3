@@ -12,15 +12,15 @@ using namespace std;
 
 // constant values
 const int MAX_N = 512;
-const double MAX_RUNNING_TIME = 9.5;
-//const double MAX_RUNNING_TIME = 1.4;
-const double INF = 1e100;
-const double G = 9.8;
-const double E = 0.0;
-const double DECAY_PER_FRAME = 0.002;
-const double TIME_PER_FRAME = 0.0005;
+const float MAX_RUNNING_TIME = 9.5;
+//const float MAX_RUNNING_TIME = 1.4;
+const float INF = 1e100;
+const float G = 9.8;
+const float E = 0.0;
+const float DECAY_PER_FRAME = 0.002;
+const float TIME_PER_FRAME = 0.0005;
 const int RESTART_FRAME = 7500;
-const double BOUNCE_MARGIN = 0.0002;
+const float BOUNCE_MARGIN = 0.0002;
 
 #if PROFILE
 class Profiler {
@@ -67,26 +67,26 @@ unsigned int randxor() {
 
 class Vec {
 public:
-    double x, y;
+    float x, y;
     Vec() {};
-    Vec(double x, double y): x(x), y(y) {}
+    Vec(float x, float y): x(x), y(y) {}
     Vec& operator+=(const Vec& o) { x += o.x; y += o.y; return *this; }
     Vec& operator-=(const Vec& o) { x -= o.x; y -= o.y; return *this; }
-    Vec& operator*=(const double m) { x *= m; y *= m; return *this; }
-    Vec& operator/=(const double m) { x /= m; y /= m; return *this; }
+    Vec& operator*=(const float m) { x *= m; y *= m; return *this; }
+    Vec& operator/=(const float m) { x /= m; y /= m; return *this; }
     void clear() { x=0, y=0; }
-    double length() { return sqrt(x*x+y*y); }
-    bool isSmallerThan(double r) { return x*x + y*y < r*r; }
-    void normalize() { double l=length(); if(l!=0) {x/=l;y/=l;} }
+    float length() { return sqrt(x*x+y*y); }
+    bool isSmallerThan(float r) { return x*x + y*y < r*r; }
+    void normalize() { float l=length(); if(l!=0) {x/=l;y/=l;} }
 };
 //ostream& operator<<(ostream& o,const Vec& v) {o << "(" << v.x << "," << v.y << ")"; return o;}
 Vec operator+(const Vec& a, const Vec& b) {return Vec(a.x+b.x,a.y+b.y);}
 Vec operator-(const Vec& a, const Vec& b) {return Vec(a.x-b.x,a.y-b.y);}
-Vec operator*(const Vec& a, const double m) {return Vec(a.x*m, a.y*m);}
-Vec operator/(const Vec& a, const double m) {return Vec(a.x/m, a.y/m);}
-double dot(const Vec& a, const Vec& b) {return a.x*b.x+a.y*b.y;}
-double cross(const Vec& a, const Vec& b) {return a.x*b.y-a.y*b.x;}
-int ccw(const Vec& a, const Vec& b) {double cp=cross(a, b); return cp ? (cp>0?1:-1) : 0;}
+Vec operator*(const Vec& a, const float m) {return Vec(a.x*m, a.y*m);}
+Vec operator/(const Vec& a, const float m) {return Vec(a.x/m, a.y/m);}
+float dot(const Vec& a, const Vec& b) {return a.x*b.x+a.y*b.y;}
+float cross(const Vec& a, const Vec& b) {return a.x*b.y-a.y*b.x;}
+int ccw(const Vec& a, const Vec& b) {float cp=cross(a, b); return cp ? (cp>0?1:-1) : 0;}
 
 struct Circle
 {
@@ -96,13 +96,13 @@ struct Circle
 
     // properties
     int index;
-    double r, m;
+    float r, m;
     Vec o_pos;
     
     // precomputed values
-    double inv_r2;
-    double inv_m;
-    double gravity;
+    float inv_r2;
+    float inv_m;
+    float gravity;
 };
 
 bool greaterMass(const Circle& lhs, const Circle& rhs) {
@@ -110,21 +110,22 @@ bool greaterMass(const Circle& lhs, const Circle& rhs) {
 }
 
 struct InputStats {
-    double total_area;
-    double max_r;
+    float total_area;
+    float max_r;
     InputStats(): total_area(0.0), max_r(0.0) {}
 };
     
 // state variables
 int N;
 Circle c[MAX_N];
-double best_cost;
+float best_cost;
 double best_x[MAX_N];
 double best_y[MAX_N];
+double input_r[MAX_N];
 
 // computing buffers and precomputed values
 struct XS {
-    double x;
+    float x;
     int index;
     bool is_left;
     bool operator<(const XS& rhs) const {
@@ -133,7 +134,7 @@ struct XS {
 };
 XS xs[MAX_N * 2];
 int pairs[MAX_N * 8];
-double m_mul_div_sum[MAX_N][MAX_N];
+float m_mul_div_sum[MAX_N][MAX_N];
 
 class CirclesSeparation {
 private:
@@ -154,6 +155,9 @@ public:
         // read and analyze input data
         N = x.size();
         for (int i = 0; i < N; i++) {
+            // save acculate radius
+            input_r[i] = r[i];
+            
             // properties
             c[i].index = i;
             c[i].pos = c[i].o_pos = Vec(x[i], y[i]);
@@ -167,7 +171,7 @@ public:
             c[i].gravity = G * TIME_PER_FRAME * min(4.0, 1 + 0.008 * c[i].m * c[i].m * c[i].inv_r2);
             
             // data for analysis
-            input_stats_.max_r = max(input_stats_.max_r, r[i]);
+            input_stats_.max_r = max(input_stats_.max_r, (float)r[i]);
             input_stats_.total_area += M_PI * r[i] * r[i];
         }
         
@@ -193,17 +197,17 @@ public:
         // determine parameter
         
         // determine initial position
-        double thresh = 0.8 + 0.4 * (double)rand() / RAND_MAX;
+        float thresh = 0.8 + 0.4 * (float)rand() / RAND_MAX;
         
-        vector<pair<double, int> > priorities(N);
+        vector<pair<float, int> > priorities(N);
         for (int i = 0; i < N; i++) {
-            double priority =  c[i].m * c[i].inv_r2;
+            float priority =  c[i].m * c[i].inv_r2;
             priorities[i].first = priority;
             priorities[i].second = i;
         }
         sort(priorities.rbegin(), priorities.rend());
         
-        double filledArea = 0.0;
+        float filledArea = 0.0;
         vector<int> outer;
         for (int i = 0; i < N; i++) {
             int index = priorities[i].second;
@@ -217,7 +221,7 @@ public:
             int index = outer[i];
             Vec d = c[index].pos - Vec(0.5, 0.5);
             d.normalize();
-            c[index].pos += d * (2 + ((double)i / outer.size()) * 2);
+            c[index].pos += d * (2 + ((float)i / outer.size()) * 2);
         }
     }
     
@@ -231,14 +235,14 @@ public:
         for (int i = 0; i < N; i++) {
             Vec d = c[i].o_pos - c[i].pos;
             d.normalize();
-            //double mul = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
+            //float mul = G * TIME_PER_FRAME * min(3.0, 1 + 0.01 * c[i].m * c[i].inv_r2);
             c[i].v += d * c[i].gravity;
         }
         
         // shake
         static int shake_dir = 0;
-        static const double DX[] = {-1, 1, 0, 0};
-        static const double DY[] = {0 ,0, -1, 1};
+        static const float DX[] = {-1, 1, 0, 0};
+        static const float DY[] = {0 ,0, -1, 1};
         if (frames_ % 2500 == 0) {
             if (hasOverlap()) {
                 expandBalls();
@@ -288,7 +292,7 @@ public:
         ///////////////////////////////////////////////////////
         // detect collision and solve constraints
         PROF_START();
-        double CD = 0.6 / TIME_PER_FRAME;
+        float CD = 0.6 / TIME_PER_FRAME;
         if (frames_ < 300) CD = 0.03 / TIME_PER_FRAME;
         for (int k = 0; k < num_pairs; k++) {
             int i = pairs[k] >> 16;
@@ -297,10 +301,10 @@ public:
             Vec d = c[j].pos - c[i].pos;
             if (d.isSmallerThan(c[i].r + c[j].r + BOUNCE_MARGIN*2)) {
                 Vec dv = c[j].v - c[i].v;
-                double len = d.length();
+                float len = d.length();
                 Vec norm = d / len;
-                double CDD = CD * (c[i].r + c[j].r  + BOUNCE_MARGIN*2 - len);
-                double C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
+                float CDD = CD * (c[i].r + c[j].r  + BOUNCE_MARGIN*2 - len);
+                float C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
                 c[i].v += norm * C * c[i].inv_m;
                 c[j].v -= norm * C * c[j].inv_m;
             }
@@ -338,8 +342,8 @@ public:
         }
     }
     
-    double currentCost() {
-        double cost = 0;
+    float currentCost() {
+        float cost = 0;
         for (int i = 0; i < N; i++) {
             Vec d = c[i].pos - c[i].o_pos;
             cost += d.length() * c[i].m;
@@ -386,10 +390,10 @@ public:
         cerr << "total_frames: " << total_frames_ << endl;
 #endif
         
-        vector<double> res;
+        vector<double> res(N*2);
         for (int i = 0; i < N; i++) {
-            res.push_back(best_x[i]);
-            res.push_back(best_y[i]);
+            res[2*i]   = best_x[i];
+            res[2*i+1] = best_y[i];
         }
         return res;
     }
@@ -398,7 +402,12 @@ private:
     
     bool isOverlap(int i, int j) {
         if (i == j) return false;
-        return (c[i].pos - c[j].pos).isSmallerThan(c[i].r + c[j].r);
+        double dx = (double)c[i].pos.x;
+        dx -= (double)c[j].pos.x;
+        double dy = (double)c[i].pos.y;
+        dy -= (double)c[j].pos.y;
+        double rsum = input_r[c[i].index] + input_r[c[j].index];
+        return dx*dx + dy*dy < rsum*rsum;
     }
     
     
@@ -419,7 +428,7 @@ private:
     void updateBest() {
         if (hasOverlap()) return;
         
-        double cost = currentCost();
+        float cost = currentCost();
         if (best_cost > cost) {
 #if PRINT_SCORE_UPDATES
             cerr << "cost: " << cost << endl;

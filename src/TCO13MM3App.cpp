@@ -13,11 +13,11 @@ using namespace std;
 
 const int SCREEN_W = 800;
 const int SCREEN_H = 600;
-double csx[512];
-double csy[512];
-double cx[512];
-double cy[512];
-double cr[512];
+float csx[512];
+float csy[512];
+float cx[512];
+float cy[512];
+float cr[512];
 
 class TCO13MM3App : public AppNative {
 public:
@@ -33,9 +33,9 @@ private:
     gl::TextureFontRef mTextureFont;
     
     CirclesSeparation *solution;
-    double prj_left;
-    double prj_top;
-    double prj_ratio;
+    float prj_left;
+    float prj_top;
+    float prj_ratio;
 };
 
 void TCO13MM3App::prepareSettings( Settings *settings )
@@ -86,16 +86,16 @@ void TCO13MM3App::draw()
 	gl::clear( Color( 1.0f, 1.0f, 1.0f ) );
     
     // calculate projection ratio
-    double left = -0.5, right = 1.5, top = -0.5, bottom = 1.5;
+    float left = -0.5, right = 1.5, top = -0.5, bottom = 1.5;
     for (int i = 0; i < N; i++) {
         left = min(left, c[i].pos.x - c[i].r);
         right = max(right, c[i].pos.x + c[i].r);
         top = min(top, c[i].pos.y - c[i].r);
         bottom = max(bottom, c[i].pos.y + c[i].r);
     }
-    double rate_w = SCREEN_W / (right - left);
-    double rate_h = SCREEN_H / (bottom - top);
-    double rate = min(rate_w, rate_h);
+    float rate_w = SCREEN_W / (right - left);
+    float rate_h = SCREEN_H / (bottom - top);
+    float rate = min(rate_w, rate_h);
     prj_left = left;
     prj_top = top;
     prj_ratio = rate;
