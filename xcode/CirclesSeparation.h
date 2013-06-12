@@ -66,9 +66,9 @@ unsigned int randxor() {
     t=(x^(x<<11));x=y;y=z;z=w; return( w=(w^(w>>19))^(t^(t>>8)) );
 }
 
-int edges[MAX_N*2];
-int LEFT_BIT = (1<<16);
-int EDGE_MASK = (1<<16) - 1;
+unsigned int edges[MAX_N*2];
+unsigned int LEFT_BIT = (1<<16);
+unsigned int EDGE_MASK = (1<<16) - 1;
 
 struct Circle
 {
@@ -112,6 +112,7 @@ float ball_ox[MAX_N]__attribute__((aligned(16)));
 float ball_oy[MAX_N]__attribute__((aligned(16)));
 int ball_index[MAX_N];
 float ball_gravity[MAX_N]__attribute__((aligned(16)));
+float ball_rsum_2[MAX_N*MAX_N];
 
 float dot(float* v1, float* v2) {
     return v1[0] * v2[0] + v1[1] * v2[1];
@@ -182,6 +183,7 @@ public:
         // precompute fixed values
         for (int i = 0; i < N; i++) for (int j = i; j < N; j++) {
             m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
+            //ball_rsum_2[(i<<9)|j] = ball_rsum_2[(j<<9)|i] = (ball_r[i] + ball_r[j] + BOUNCE_MARGIN*2) * (ball_r[i] + ball_r[j] + BOUNCE_MARGIN*2);
         }
         
         restart();
@@ -328,18 +330,18 @@ public:
         PROF_START()
         int num_pairs = 0;
         int num_xs = 2*N;
-        for (int i = 0; i < num_xs; i++) {
+        for (int i = 0; i < num_xs; ++i) {
             if (edges[i] & LEFT_BIT) {
-                int a = edges[i] & EDGE_MASK;
-                for (int j = i+1; j < num_xs; j++) {
-                    int b = edges[j] & EDGE_MASK;
-                    if (b == a) break;
+                unsigned int a = edges[i] & EDGE_MASK;
+                for (int j = i+1; edges[j] != a; ++j) {
                     if (edges[j] & LEFT_BIT) {
+                        unsigned int b = edges[j] & EDGE_MASK;
                         float dx = ball_x[a] - ball_x[b];
                         float dy = ball_y[a] - ball_y[b];
                         float sum = ball_r[a] + ball_r[b] + BOUNCE_MARGIN*2;
-                        if (dx*dx+dy*dy<sum*sum)
+                        if (dx * dx + dy * dy < sum * sum) {
                             pairs[num_pairs++] = (a << 16) | b;
+                        }
                     }
                 }
             }

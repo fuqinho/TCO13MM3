@@ -109,6 +109,11 @@ void TCO13MM3App::draw()
         csy[i] = (ball_oy[i] - top) * rate;
     }
     
+    float box_top = (0.0f - top) * rate;
+    float box_bottom = (1.0f - top) * rate;
+    float box_left = (0.0f - left) * rate;
+    float box_right = (1.0f - left) * rate;
+    
     // draw inner circle
     gl::enableAlphaBlending();
     for (int i = 0; i < N; i++) {
@@ -127,6 +132,14 @@ void TCO13MM3App::draw()
         gl::color( ColorA( 1.0f, 0.0f, 0.0f, c[i].m ) );
         gl::drawLine(Vec2f(cx[i], cy[i]), Vec2f(csx[i], csy[i]));
     }
+    
+    // draw boxes
+    gl::color( ColorA ( 2.0f, 1.0f, 2.0f, 0.7f ) );
+    gl::lineWidth(2.0f);
+    gl::drawLine(Vec2f(box_left, box_top), Vec2f(box_right, box_top));
+    gl::drawLine(Vec2f(box_right, box_top), Vec2f(box_right, box_bottom));
+    gl::drawLine(Vec2f(box_right, box_bottom), Vec2f(box_left, box_bottom));
+    gl::drawLine(Vec2f(box_left, box_bottom), Vec2f(box_left, box_top));
     
     // draw current score
     gl::color( Color( 0.0f, 0.0f, 0.0f ) );
