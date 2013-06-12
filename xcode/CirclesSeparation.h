@@ -66,7 +66,8 @@ unsigned int randxor() {
     t=(x^(x<<11));x=y;y=z;z=w; return( w=(w^(w>>19))^(t^(t>>8)) );
 }
 
-unsigned int edges[MAX_N*2];
+unsigned int edges_x[MAX_N*2];
+unsigned int edges_y[MAX_N*2];
 unsigned int LEFT_BIT = (1<<16);
 unsigned int EDGE_MASK = (1<<16) - 1;
 
@@ -112,11 +113,11 @@ float ball_ox[MAX_N]__attribute__((aligned(16)));
 float ball_oy[MAX_N]__attribute__((aligned(16)));
 int ball_index[MAX_N];
 float ball_gravity[MAX_N]__attribute__((aligned(16)));
-float ball_rsum_2[MAX_N*MAX_N];
 
 float dot(float* v1, float* v2) {
     return v1[0] * v2[0] + v1[1] * v2[1];
 }
+
 void normalize(float* v) {
     float len = (float)sqrt(v[0] * v[0] + v[1] * v[1]);
     if (len != 0.0f) {
@@ -128,6 +129,14 @@ void normalize(float* v) {
 // computing buffers and precomputed values
 int pairs[MAX_N * 8];
 float m_mul_div_sum[MAX_N][MAX_N];
+
+struct PairNode {
+    int a, b;
+    PairNode *prev, *next;
+};
+int overlap_cnt[MAX_N][MAX_N];
+PairNode pair_nodes[MAX_N][MAX_N];
+PairNode* pair_head;
 
 class CirclesSeparation {
 private:
@@ -183,7 +192,6 @@ public:
         // precompute fixed values
         for (int i = 0; i < N; i++) for (int j = i; j < N; j++) {
             m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
-            //ball_rsum_2[(i<<9)|j] = ball_rsum_2[(j<<9)|i] = (ball_r[i] + ball_r[j] + BOUNCE_MARGIN*2) * (ball_r[i] + ball_r[j] + BOUNCE_MARGIN*2);
         }
         
         restart();
@@ -205,7 +213,7 @@ public:
         
         vector<pair<float, int> > priorities(N);
         for (int i = 0; i < N; i++) {
-            float priority =  ball_m[i] * c[i].inv_r2; // TODO efficiency
+            float priority =  ball_m[i] * c[i].inv_r2;
             priorities[i].first = priority;
             priorities[i].second = i;
         }
@@ -231,23 +239,55 @@ public:
             ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 2);
         }
         
+        memset(overlap_cnt, 0, sizeof(overlap_cnt));
+        memset(pair_nodes, 0, sizeof(pair_nodes));
+        pair_head = NULL;
         for (int i = 0; i < N; i++) {
-            edges[i] = i;
-            edges[i+N] = i | LEFT_BIT;
+            edges_x[2*i] = i | LEFT_BIT;
+            edges_x[2*i+1] = i;
+            edges_y[2*i] = i | LEFT_BIT;
+            edges_y[2*i+1] = i;
         }
-        insertion_sort();
+        sort_edges(edges_x, ball_x, 2*N);
+        sort_edges(edges_y, ball_y, 2*N);
     }
-    
-    void insertion_sort() {
-        for (int i = 0; i < 2*N; i++) {
+
+    void sort_edges(unsigned int* edges, float* pos, int size) {
+        for (int i = 0; i < size; i++) {
             int j = i-1;
             if (j < 0) continue;
             while (j >= 0) {
                 int id0 = (edges[j] & EDGE_MASK);
                 int id1 = (edges[j+1] & EDGE_MASK);
-                float prev = ball_x[id0] + ball_r[id0] * (edges[j] & LEFT_BIT ? -1 : 1);
-                float cur =  ball_x[id1] + ball_r[id1] * (edges[j+1] & LEFT_BIT ? -1 : 1);
-                if (prev > cur) {
+                float pos0 = pos[id0] + (ball_r[id0] + BOUNCE_MARGIN) * ((edges[j] & LEFT_BIT) ? -1 : 1);
+                float pos1 =  pos[id1] + (ball_r[id1] + BOUNCE_MARGIN) * ((edges[j+1] & LEFT_BIT) ? -1 : 1);
+                if (pos0 > pos1) {
+                    if (!(edges[j] & LEFT_BIT) && (edges[j+1] & LEFT_BIT)) {
+                        int& o_cnt = overlap_cnt[min(id0, id1)][max(id0, id1)];
+                        o_cnt++;
+                        if (o_cnt == 2) {
+                            PairNode* node = &pair_nodes[min(id0, id1)][max(id0, id1)];
+                            node->a = min(id0, id1);
+                            node->b = max(id0, id1);
+                            if (pair_head) {
+                                pair_head->prev = node;
+                            }
+                            node->next = pair_head;
+                            node->prev = NULL;
+                            pair_head = node;
+                        }
+                    } else if ((edges[j] & LEFT_BIT) && !(edges[j+1] & LEFT_BIT)) {
+                        int& o_cnt = overlap_cnt[min(id0, id1)][max(id0, id1)];
+                        o_cnt--;
+                        if (o_cnt == 1) {
+                            PairNode* node = &pair_nodes[min(id0, id1)][max(id0, id1)];
+                            if (node->prev) node->prev->next = node->next;
+                            if (node->next) node->next->prev = node->prev;
+                            if (node == pair_head) pair_head = node->next;
+                            node->prev = NULL;
+                            node->next = NULL;
+                        }
+                    }
                     swap(edges[j], edges[j+1]);
                 } else {
                     break;
@@ -267,14 +307,13 @@ public:
         // apply force
         PROF_START();
         for (int i = 0; i < N; i+=4) {
-            /*
-             float d[2];
-             d[0] = ball_ox[i] - ball_x[i];
-             d[1] = ball_oy[i] - ball_y[i];
-             normalize(d);
-             ball_vx[i] += d[0] * c[i].gravity;
-             ball_vy[i] += d[1] * c[i].gravity;
-             */            
+            // float d[2];
+            // d[0] = ball_ox[i] - ball_x[i];
+            // d[1] = ball_oy[i] - ball_y[i];
+            // normalize(d);
+            // ball_vx[i] += d[0] * c[i].gravity;
+            // ball_vy[i] += d[1] * c[i].gravity;
+            
             reg[0] = _mm_load_ps(&ball_ox[i]);
             reg[1] = _mm_load_ps(&ball_x[i]);
             reg[2] = _mm_load_ps(&ball_oy[i]);
@@ -316,34 +355,29 @@ public:
                 shake_dir = (shake_dir + 1) % 4;
             }
         }
-        
         PROF_END(0);
         
         ///////////////////////////////////////////////////////
         // broad phase
         PROF_START();
-        insertion_sort();
+        sort_edges(edges_x, ball_x, 2*N);
+        sort_edges(edges_y, ball_y, 2*N);
         PROF_END(1);
         
         ///////////////////////////////////////////////////////
         // detect collision
         PROF_START()
         int num_pairs = 0;
-        int num_xs = 2*N;
-        for (int i = 0; i < num_xs; ++i) {
-            if (edges[i] & LEFT_BIT) {
-                unsigned int a = edges[i] & EDGE_MASK;
-                for (int j = i+1; edges[j] != a; ++j) {
-                    if (edges[j] & LEFT_BIT) {
-                        unsigned int b = edges[j] & EDGE_MASK;
-                        float dx = ball_x[a] - ball_x[b];
-                        float dy = ball_y[a] - ball_y[b];
-                        float sum = ball_r[a] + ball_r[b] + BOUNCE_MARGIN*2;
-                        if (dx * dx + dy * dy < sum * sum) {
-                            pairs[num_pairs++] = (a << 16) | b;
-                        }
-                    }
-                }
+        PairNode* node = pair_head;
+        while (node) {
+            int a = node->a;
+            int b = node->b;
+            node = node->next;
+            float dx = ball_x[a] - ball_x[b];
+            float dy = ball_y[a] - ball_y[b];
+            float sum = ball_r[a] + ball_r[b] + BOUNCE_MARGIN*2;
+            if (dx * dx + dy * dy < sum * sum) {
+                pairs[num_pairs++] = (a << 16) | b;
             }
         }
         PROF_END(2);
@@ -381,10 +415,9 @@ public:
         
         // add friction
         for (int i = 0; i < N; i+=16) {
-            /*
-            ball_vx[i] *= 1 - DECAY_PER_FRAME;
-            ball_vy[i] *= 1 - DECAY_PER_FRAME;
-            */
+            // ball_vx[i] *= 1 - DECAY_PER_FRAME;
+            // ball_vy[i] *= 1 - DECAY_PER_FRAME;
+            
             int j = i+4, k = j+4, l = k+4;
             reg[0] = _mm_load_ps(&ball_vx[i]);
             reg[1] = _mm_load_ps(&ball_vy[i]);
@@ -420,10 +453,9 @@ public:
         // integrate
         PROF_START();
         for (int i = 0; i < N; i+=8) {
-            /*
-            ball_x[i] += ball_vx[i] * TIME_PER_FRAME;
-            ball_y[i] += ball_vy[i] * TIME_PER_FRAME;
-             */
+            // ball_x[i] += ball_vx[i] * TIME_PER_FRAME;
+            // ball_y[i] += ball_vy[i] * TIME_PER_FRAME;
+
             int j = i+4;
             reg[0] = _mm_load_ps(&ball_vx[i]);
             reg[1] = _mm_load_ps(&ball_vy[i]);
@@ -531,7 +563,6 @@ public:
     }
     
 private:
-    
     bool isOverlap(int i, int j) {
         if (i == j) return false;
         double dx = (double)ball_x[i];
@@ -541,7 +572,6 @@ private:
         double rsum = input_r[ball_index[i]] + input_r[ball_index[j]];
         return dx*dx + dy*dy < rsum*rsum;
     }
-    
     
     bool hasOverlap() {
         for (int i = 0; i < N; i++)
