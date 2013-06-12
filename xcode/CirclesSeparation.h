@@ -7,9 +7,9 @@
 using namespace std;
 
 // flags
-#define PROFILE 0
+#define PROFILE 1
 #define PRINT_FRAMES 1
-#define PRINT_SCORE_UPDATES 0
+#define PRINT_SCORE_UPDATES 1
 
 // constant values
 const int MAX_N = 512;
@@ -66,6 +66,10 @@ unsigned int randxor() {
     t=(x^(x<<11));x=y;y=z;z=w; return( w=(w^(w>>19))^(t^(t>>8)) );
 }
 
+int edges[MAX_N*2];
+int LEFT_BIT = (1<<16);
+int EDGE_MASK = (1<<16) - 1;
+
 struct Circle
 {
     // states;
@@ -78,7 +82,6 @@ struct Circle
     // precomputed values
     float inv_r2;
     float inv_m;
-    float gravity;
 };
 
 bool greaterMass(const Circle& lhs, const Circle& rhs) {
@@ -108,6 +111,7 @@ float ball_vy[MAX_N]__attribute__((aligned(16)));
 float ball_ox[MAX_N]__attribute__((aligned(16)));
 float ball_oy[MAX_N]__attribute__((aligned(16)));
 int ball_index[MAX_N];
+float ball_gravity[MAX_N]__attribute__((aligned(16)));
 
 float dot(float* v1, float* v2) {
     return v1[0] * v2[0] + v1[1] * v2[1];
@@ -121,15 +125,6 @@ void normalize(float* v) {
 }
 
 // computing buffers and precomputed values
-struct XS {
-    float x;
-    int index;
-    bool is_left;
-    bool operator< (const XS& rhs) const {
-        return x < rhs.x;
-    }
-};
-XS xs[MAX_N * 2];
 int pairs[MAX_N * 8];
 float m_mul_div_sum[MAX_N][MAX_N];
 
@@ -163,7 +158,6 @@ public:
             // precompute values
             c[i].inv_r2 = 1.0 / r[i] / r[i];
             c[i].inv_m = 1.0 / m[i];
-            c[i].gravity = G * TIME_PER_FRAME * min(4.0, 1 + 0.008 * c[i].m * c[i].m * c[i].inv_r2);
             
             // data for analysis
             input_stats_.max_r = max(input_stats_.max_r, (float)r[i]);
@@ -181,6 +175,8 @@ public:
             ball_vx[i] = 0.0f;
             ball_vy[i] = 0.0f;
             ball_index[i] = c[i].index;
+            
+            ball_gravity[i] = G * TIME_PER_FRAME * min(4.0, 1 + 0.008 * ball_m[i] * ball_m[i] * c[i].inv_r2);
         }
         
         // precompute fixed values
@@ -232,22 +228,75 @@ public:
             ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 2);
             ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 2);
         }
+        
+        for (int i = 0; i < N; i++) {
+            edges[i] = i;
+            edges[i+N] = i | LEFT_BIT;
+        }
+        insertion_sort();
+    }
+    
+    void insertion_sort() {
+        for (int i = 0; i < 2*N; i++) {
+            int j = i-1;
+            if (j < 0) continue;
+            while (j >= 0) {
+                int id0 = (edges[j] & EDGE_MASK);
+                int id1 = (edges[j+1] & EDGE_MASK);
+                float prev = ball_x[id0] + ball_r[id0] * (edges[j] & LEFT_BIT ? -1 : 1);
+                float cur =  ball_x[id1] + ball_r[id1] * (edges[j+1] & LEFT_BIT ? -1 : 1);
+                if (prev > cur) {
+                    swap(edges[j], edges[j+1]);
+                } else {
+                    break;
+                }
+                j--;
+            }
+        }
     }
     
     void update() {
         frames_++;
         total_frames_++;
         
+        __m128 reg[8];
+        
         ///////////////////////////////////////////////////////
         // apply force
         PROF_START();
-        for (int i = 0; i < N; i++) {
-            float d[2];
-            d[0] = ball_ox[i] - ball_x[i];
-            d[1] = ball_oy[i] - ball_y[i];
-            normalize(d);
-            ball_vx[i] += d[0] * c[i].gravity;
-            ball_vy[i] += d[1] * c[i].gravity;
+        for (int i = 0; i < N; i+=4) {
+            /*
+             float d[2];
+             d[0] = ball_ox[i] - ball_x[i];
+             d[1] = ball_oy[i] - ball_y[i];
+             normalize(d);
+             ball_vx[i] += d[0] * c[i].gravity;
+             ball_vy[i] += d[1] * c[i].gravity;
+             */            
+            reg[0] = _mm_load_ps(&ball_ox[i]);
+            reg[1] = _mm_load_ps(&ball_x[i]);
+            reg[2] = _mm_load_ps(&ball_oy[i]);
+            reg[3] = _mm_load_ps(&ball_y[i]);
+            reg[4] = _mm_load_ps(&ball_vx[i]);
+            reg[5] = _mm_load_ps(&ball_vy[i]);
+            reg[6] = _mm_load_ps(&ball_gravity[i]);
+            
+            reg[0] = _mm_sub_ps(reg[0], reg[1]);
+            reg[2] = _mm_sub_ps(reg[2], reg[3]);
+            reg[1] = _mm_mul_ps(reg[0], reg[0]);
+            reg[3] = _mm_mul_ps(reg[2], reg[2]);
+            reg[1] = _mm_add_ps(reg[1], reg[3]);
+            reg[1] = _mm_add_ps(reg[1], _mm_set1_ps(1e-10f));
+            reg[1] = _mm_rsqrt_ps(reg[1]);
+            reg[0] = _mm_mul_ps(reg[0], reg[1]);
+            reg[0] = _mm_mul_ps(reg[0], reg[6]);
+            reg[2] = _mm_mul_ps(reg[2], reg[1]);
+            reg[2] = _mm_mul_ps(reg[2], reg[6]);
+            reg[4] = _mm_add_ps(reg[4], reg[0]);
+            reg[5] = _mm_add_ps(reg[5], reg[2]);
+            
+            _mm_store_ps(&ball_vx[i], reg[4]);
+            _mm_store_ps(&ball_vy[i], reg[5]);
         }
         
         // shake
@@ -271,30 +320,26 @@ public:
         ///////////////////////////////////////////////////////
         // broad phase
         PROF_START();
-        int num_xs = 0;
-        for (int i = 0; i < N; i++) {
-            xs[num_xs].x = ball_x[i] - ball_r[i] - BOUNCE_MARGIN;
-            xs[num_xs].index = i;
-            xs[num_xs].is_left = true;
-            num_xs++;
-            xs[num_xs].x = ball_x[i] + ball_r[i] + BOUNCE_MARGIN;
-            xs[num_xs].index = i;
-            xs[num_xs].is_left = false;
-            num_xs++;
-        }
-        sort(xs, xs + num_xs);
+        insertion_sort();
         PROF_END(1);
         
+        ///////////////////////////////////////////////////////
+        // detect collision
         PROF_START()
         int num_pairs = 0;
+        int num_xs = 2*N;
         for (int i = 0; i < num_xs; i++) {
-            if (xs[i].is_left) {
-                int a = xs[i].index;
+            if (edges[i] & LEFT_BIT) {
+                int a = edges[i] & EDGE_MASK;
                 for (int j = i+1; j < num_xs; j++) {
-                    int b = xs[j].index;
+                    int b = edges[j] & EDGE_MASK;
                     if (b == a) break;
-                    if (xs[j].is_left && abs(ball_y[a] - ball_y[b]) < ball_r[a] + ball_r[b] + BOUNCE_MARGIN*2) {
-                        pairs[num_pairs++] = (a << 16) | b;
+                    if (edges[j] & LEFT_BIT) {
+                        float dx = ball_x[a] - ball_x[b];
+                        float dy = ball_y[a] - ball_y[b];
+                        float sum = ball_r[a] + ball_r[b] + BOUNCE_MARGIN*2;
+                        if (dx*dx+dy*dy<sum*sum)
+                            pairs[num_pairs++] = (a << 16) | b;
                     }
                 }
             }
@@ -302,7 +347,7 @@ public:
         PROF_END(2);
         
         ///////////////////////////////////////////////////////
-        // detect collision and solve constraints
+        // solve constraints
         PROF_START();
         float CD = 0.6 / TIME_PER_FRAME;
         if (frames_ < 300) CD = 0.03 / TIME_PER_FRAME;
@@ -316,37 +361,90 @@ public:
             float norm_dist2 = norm[0] * norm[0] + norm[1] * norm[1];
             float minimum_distance = ball_r[i] + ball_r[j] + BOUNCE_MARGIN*2;
             
-            if (norm_dist2 < minimum_distance * minimum_distance) {
-                float dv[2];
-                dv[0] = ball_vx[j] - ball_vx[i];
-                dv[1] = ball_vy[j] - ball_vy[i];
-                float len = (float)sqrt(norm_dist2);
-                norm[0] /= len;
-                norm[1] /= len;
-                float CDD = CD * (minimum_distance - len);
-                float C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
-                
-                ball_vx[i] += norm[0] * C * c[i].inv_m;
-                ball_vy[i] += norm[1] * C * c[i].inv_m;
-                ball_vx[j] -= norm[0] * C * c[j].inv_m;
-                ball_vy[j] -= norm[1] * C * c[j].inv_m;
-            }
+            float dv[2];
+            dv[0] = ball_vx[j] - ball_vx[i];
+            dv[1] = ball_vy[j] - ball_vy[i];
+            float len = (float)sqrt(norm_dist2);
+            norm[0] /= len;
+            norm[1] /= len;
+            float CDD = CD * (minimum_distance - len);
+            float C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
+            
+            ball_vx[i] += norm[0] * C * c[i].inv_m;
+            ball_vy[i] += norm[1] * C * c[i].inv_m;
+            ball_vx[j] -= norm[0] * C * c[j].inv_m;
+            ball_vy[j] -= norm[1] * C * c[j].inv_m;
         }
         PROF_END(3);
         
         // add friction
-        for (int i = 0; i < N; i++) {
+        for (int i = 0; i < N; i+=16) {
+            /*
             ball_vx[i] *= 1 - DECAY_PER_FRAME;
             ball_vy[i] *= 1 - DECAY_PER_FRAME;
+            */
+            int j = i+4, k = j+4, l = k+4;
+            reg[0] = _mm_load_ps(&ball_vx[i]);
+            reg[1] = _mm_load_ps(&ball_vy[i]);
+            reg[2] = _mm_load_ps(&ball_vx[j]);
+            reg[3] = _mm_load_ps(&ball_vy[j]);
+            reg[4] = _mm_load_ps(&ball_vx[k]);
+            reg[5] = _mm_load_ps(&ball_vy[k]);
+            reg[6] = _mm_load_ps(&ball_vx[l]);
+            reg[7] = _mm_load_ps(&ball_vy[l]);
+
+            static const float RATE = 1 - DECAY_PER_FRAME;
+            reg[0] = _mm_mul_ps(reg[0], _mm_set1_ps(RATE));
+            reg[1] = _mm_mul_ps(reg[1], _mm_set1_ps(RATE));
+            reg[2] = _mm_mul_ps(reg[2], _mm_set1_ps(RATE));
+            reg[3] = _mm_mul_ps(reg[3], _mm_set1_ps(RATE));
+            reg[4] = _mm_mul_ps(reg[4], _mm_set1_ps(RATE));
+            reg[5] = _mm_mul_ps(reg[5], _mm_set1_ps(RATE));
+            reg[6] = _mm_mul_ps(reg[6], _mm_set1_ps(RATE));
+            reg[7] = _mm_mul_ps(reg[7], _mm_set1_ps(RATE));
+
+            _mm_store_ps(&ball_vx[i], reg[0]);
+            _mm_store_ps(&ball_vy[i], reg[1]);
+            _mm_store_ps(&ball_vx[j], reg[2]);
+            _mm_store_ps(&ball_vy[j], reg[3]);
+            _mm_store_ps(&ball_vx[k], reg[4]);
+            _mm_store_ps(&ball_vy[k], reg[5]);
+            _mm_store_ps(&ball_vx[l], reg[6]);
+            _mm_store_ps(&ball_vy[l], reg[7]);
         }
         
         
         ///////////////////////////////////////////////////////
         // integrate
         PROF_START();
-        for (int i = 0; i < N; i++) {
+        for (int i = 0; i < N; i+=8) {
+            /*
             ball_x[i] += ball_vx[i] * TIME_PER_FRAME;
             ball_y[i] += ball_vy[i] * TIME_PER_FRAME;
+             */
+            int j = i+4;
+            reg[0] = _mm_load_ps(&ball_vx[i]);
+            reg[1] = _mm_load_ps(&ball_vy[i]);
+            reg[2] = _mm_load_ps(&ball_x[i]);
+            reg[3] = _mm_load_ps(&ball_y[i]);
+            reg[4] = _mm_load_ps(&ball_vx[j]);
+            reg[5] = _mm_load_ps(&ball_vy[j]);
+            reg[6] = _mm_load_ps(&ball_x[j]);
+            reg[7] = _mm_load_ps(&ball_y[j]);
+            
+            reg[0] = _mm_mul_ps(reg[0], _mm_set1_ps(TIME_PER_FRAME));
+            reg[1] = _mm_mul_ps(reg[1], _mm_set1_ps(TIME_PER_FRAME));
+            reg[2] = _mm_add_ps(reg[2], reg[0]);
+            reg[3] = _mm_add_ps(reg[3], reg[1]);
+            reg[4] = _mm_mul_ps(reg[4], _mm_set1_ps(TIME_PER_FRAME));
+            reg[5] = _mm_mul_ps(reg[5], _mm_set1_ps(TIME_PER_FRAME));
+            reg[6] = _mm_add_ps(reg[6], reg[4]);
+            reg[7] = _mm_add_ps(reg[7], reg[5]);
+            
+            _mm_store_ps(&ball_x[i], reg[2]);
+            _mm_store_ps(&ball_y[i], reg[3]);
+            _mm_store_ps(&ball_x[j], reg[6]);
+            _mm_store_ps(&ball_y[j], reg[7]);
         }
         PROF_END(4);
         
