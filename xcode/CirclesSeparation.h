@@ -6,7 +6,7 @@
 #define PRINT_SIMULATED_FRAMES 1
 #define PRINT_SCORE_UPDATES 1
 #define PRINT_BEST_PARAMETERS 1
-#define PRINT_BEST_PARAMETERS_PERIODICALLY 0
+#define PRINT_BEST_PARAMETERS_PERIODICALLY 1
 
 #define ENABLE_RESTART 1
 #define ENABLE_SHAKE 1
@@ -451,8 +451,8 @@ private:
             d[0] = ball_x[index] - 0.5;
             d[1] = ball_y[index] - 0.5;
             normalize(d);
-            ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 2);
-            ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 2);
+            ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 3);
+            ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 3);
         }
         sortBounds(bounds_x, ball_x, 2*N);
         sortBounds(bounds_y, ball_y, 2*N);
