@@ -6,6 +6,9 @@
 #define PRINT_SIMULATED_FRAMES 1
 #define PRINT_SCORE_UPDATES 1
 
+#define ENABLE_RESTART 1
+#define ENABLE_SHAKE 1
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Constant values
@@ -25,6 +28,7 @@ const float BOUNCE_MARGIN = 0.0002;
 const float ANTI_PENETRATION_COEFFICIENT = 0.6;
 const float ANTI_PENETRATION_MILD_COEFFICIENT = 0.03;
 const float ANTI_PENETRATION_MILD_FRAMES = 300;
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Headers
@@ -425,8 +429,10 @@ private:
     }
     
     void restart() {
+#if ENABLE_RESTART
         iteration_++;
         start();
+#endif
     }
     
     void applyForceToCenter() {
@@ -469,6 +475,7 @@ private:
     }
     
     void applyExternalForce(int frame) {
+#if ENABLE_SHAKE
         if (frame % SHAKE_INTERVAL == 0) {
             if (hasOverlap()) {
                 expandBalls();
@@ -476,6 +483,7 @@ private:
                 shakeBalls();
             }
         }
+#endif
     }
     
     void detectCollisions() {
