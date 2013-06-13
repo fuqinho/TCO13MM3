@@ -60,11 +60,12 @@ Profiler prof;
 #define PROF_REPORT()
 #endif
 
-unsigned int randxor() {
+static inline unsigned int randxor() {
     static unsigned int x=123456789,y=362436069,z=521288629,w=88675123;
     unsigned int t;
     t=(x^(x<<11));x=y;y=z;z=w; return( w=(w^(w>>19))^(t^(t>>8)) );
 }
+static inline int myrandom (int i) { return randxor()%i;}
 
 unsigned int edges_x[MAX_N*2];
 unsigned int edges_y[MAX_N*2];
@@ -380,7 +381,7 @@ public:
                 pairs[num_pairs++] = (a << 16) | b;
             }
         }
-        random_shuffle(pairs, pairs + num_pairs);
+        random_shuffle(pairs, pairs + num_pairs, myrandom);
         PROF_END(2);
         
         ///////////////////////////////////////////////////////
