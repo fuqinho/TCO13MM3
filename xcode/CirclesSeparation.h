@@ -380,7 +380,7 @@ private:
             c[i].inv_r2 = 1.0 / input_r[c[i].index] / input_r[c[i].index];
             c[i].inv_m = 1.0 / input_m[c[i].index];
             
-            ball_gravity[i] = G * TIME_PER_FRAME * min(4.0, 1 + 0.008 * ball_m[i] * ball_m[i] * c[i].inv_r2);
+            ball_gravity[i] = G * TIME_PER_FRAME * min(3.0, 1 + 0.003 * ball_m[i] * c[i].inv_r2);
         }
         
         // precompute for pairs
