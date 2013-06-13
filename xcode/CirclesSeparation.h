@@ -5,6 +5,8 @@
 #define PROFILE 1
 #define PRINT_SIMULATED_FRAMES 1
 #define PRINT_SCORE_UPDATES 1
+#define PRINT_BEST_PARAMETERS 1
+#define PRINT_BEST_PARAMETERS_PERIODICALLY 0
 
 #define ENABLE_RESTART 1
 #define ENABLE_SHAKE 1
@@ -108,7 +110,7 @@ struct InputStats {
 };
 
 struct Parameter {
-    float initialFillLimit;
+    float initial_fill_limit;
 };
 
 
@@ -197,6 +199,8 @@ public:
 #if PRINT_SIMULATED_FRAMES
         cerr << "total_frames: " << total_frames_ << endl;
 #endif
+        printBestParams();
+        
         return vector<double>(best_result, best_result + N * 2);
     }
     
@@ -254,7 +258,12 @@ public:
         if (frames_in_period_ == FRAMES_PER_PERIOD) mayRestart();
         PROF_END(5);
         
-        if (total_frames_ % 10000 == 0) PROF_REPORT();
+        if (total_frames_ % 10000 == 0) {
+            PROF_REPORT();
+#if PRINT_BEST_PARAMETERS_PERIODICALLY
+            printBestParams();
+#endif
+        }
     }
     
     float currentCost() {
@@ -319,7 +328,7 @@ private:
     int iteration_;
     float period_best_cost, prev_period_best_cost;
     InputStats input_stats_;
-    Parameter param_;
+    Parameter param_, best_param_;
     int hover_circle_;
     
     void initializeOnce() {
@@ -384,7 +393,7 @@ private:
     }
     
     void adjustParameter(int iteration) {
-        param_.initialFillLimit = 0.8 + 0.4 * (float)rand() / RAND_MAX;
+        param_.initial_fill_limit = 0.8 + 0.4 * (float)rand() / RAND_MAX;
     }
     
     void start() {
@@ -430,7 +439,7 @@ private:
         vector<int> outer;
         for (int i = 0; i < N; i++) {
             int index = priorities[i].second;
-            if (filledArea > param_.initialFillLimit) {
+            if (filledArea > param_.initial_fill_limit) {
                 outer.push_back(index);
             } else {
                 filledArea += ball_r[index] * ball_r[index] * 3.14;
@@ -709,7 +718,16 @@ private:
                 best_result[ball_index[i] * 2] = ball_x[i];
                 best_result[ball_index[i] * 2 + 1] = ball_y[i];
             }
+            best_param_ = param_;
         }
+    }
+    
+    void printBestParams() {
+#if PRINT_BEST_PARAMETERS
+        cerr << N << '\t'
+            << input_stats_.total_area << '\t' << input_stats_.max_r << '\t'
+            << best_param_.initial_fill_limit << endl;
+#endif
     }
     
     void pushPairToList(int a, int b) {
