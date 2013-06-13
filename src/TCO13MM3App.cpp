@@ -9,8 +9,6 @@ using namespace ci;
 using namespace ci::app;
 using namespace std;
 
-
-
 const int SCREEN_W = 800;
 const int SCREEN_H = 600;
 float csx[512];

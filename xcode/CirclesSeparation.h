@@ -380,6 +380,7 @@ public:
                 pairs[num_pairs++] = (a << 16) | b;
             }
         }
+        random_shuffle(pairs, pairs + num_pairs);
         PROF_END(2);
         
         ///////////////////////////////////////////////////////
