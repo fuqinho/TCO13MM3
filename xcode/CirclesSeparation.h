@@ -22,12 +22,15 @@ const float G = 9.8;
 const float E = 0.0;
 const float DECAY_PER_FRAME = 0.002;
 const float TIME_PER_FRAME = 0.0005;
-const int RESTART_FRAME = 7500;
-const int SHAKE_INTERVAL = 2500;
 const float BOUNCE_MARGIN = 0.0002;
 const float ANTI_PENETRATION_COEFFICIENT = 0.6;
 const float ANTI_PENETRATION_MILD_COEFFICIENT = 0.03;
 const float ANTI_PENETRATION_MILD_FRAMES = 300;
+const int FRAMES_PER_PERIOD = 2500;
+const int MIN_PERIODS = 2;
+const int MAX_PERIODS = 10;
+const float RESTART_THRESHOLD_VS_PERIOD = 1.001;
+const float RESTART_THRESHOLD_VS_ITERATION = 1.01;
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -144,6 +147,7 @@ Candidate candidates[MAX_N][MAX_N];
 Candidate* candidates_list_head;
 
 float m_mul_div_sum[MAX_N][MAX_N];
+float period_best[MAX_N];
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -183,7 +187,7 @@ static inline void normalize(float* v) {
 
 class CirclesSeparation {
 public:
-    CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), iteration_(0) {}
+    CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), periods_(0), frames_in_period_(0), iteration_(0) {}
     
     vector<double> minimumWork(vector<double> x, vector<double> y, vector<double> r, vector<double> m) {
         const clock_t end__ = clock() + MAX_RUNNING_TIME * CLOCKS_PER_SEC;
@@ -206,9 +210,6 @@ public:
     }
     
     void update() {
-        frames_++;
-        total_frames_++;
-        
         ///////////////////////////////////////////////////////
         // apply force
         PROF_START();
@@ -246,9 +247,13 @@ public:
         ///////////////////////////////////////////////////////
         // others
         PROF_START();
+        frames_++;
+        frames_in_period_++;
+        total_frames_++;
         if (frames_ % 100 == 0) updateBest();
-        if (frames_ >= RESTART_FRAME) restart();
+        if (frames_in_period_ == FRAMES_PER_PERIOD) mayRestart();
         PROF_END(5);
+        
         if (total_frames_ % 10000 == 0) PROF_REPORT();
     }
     
@@ -265,6 +270,14 @@ public:
     
     int currentFrame() {
         return frames_;
+    }
+    
+    int currentIteration() {
+        return iteration_;
+    }
+    
+    int currentPeriod() {
+        return periods_;
     }
     
     void catch_circle(float x, float y) {
@@ -301,7 +314,10 @@ private:
     
     int frames_;
     int total_frames_;
+    int periods_;
+    int frames_in_period_;
     int iteration_;
+    float period_best_cost, prev_period_best_cost;
     InputStats input_stats_;
     Parameter param_;
     int hover_circle_;
@@ -309,6 +325,7 @@ private:
     void initializeOnce() {
         srand(10);
         best_cost = INF;
+        for (int i = 0; i < MAX_PERIODS; i++) period_best[i] = INF;
     }
     
     void readInput(const vector<double>& x, const vector<double>& y, const vector<double>& r, const vector<double>& m) {
@@ -360,12 +377,27 @@ private:
         // precompute for pairs
         for (int i = 0; i < N; i++) for (int j = i; j < N; j++) {
             m_mul_div_sum[i][j] = m_mul_div_sum[j][i] = c[i].m * c[j].m / (c[i].m + c[j].m);
-            
         }
     }
     
     void clearState() {
+    }
+    
+    void adjustParameter(int iteration) {
+        param_.initialFillLimit = 0.8 + 0.4 * (float)rand() / RAND_MAX;
+    }
+    
+    void start() {
+        adjustParameter(iteration_);
+        initIteration();
+    }
+    
+    void initIteration() {
         frames_ = 0;
+        periods_ = 0;
+        period_best_cost = prev_period_best_cost = INF;
+
+        // clear state of balls and collisions
         for (int i = 0; i < N; i++) {
             ball_vx[i] = ball_vy[i] = 0.0f;
             ball_x[i] = ball_ox[i];
@@ -384,13 +416,8 @@ private:
             bounds_y[2*i] = i | BOUNDS_ISLEFT_BIT;
             bounds_y[2*i+1] = i;
         }
-    }
-    
-    void adjustParameter(int iteration) {
-        param_.initialFillLimit = 0.8 + 0.4 * (float)rand() / RAND_MAX;
-    }
-    
-    void setInitialState() {
+
+        // set initial position for balls
         vector<pair<float, int> > priorities(N);
         for (int i = 0; i < N; i++) {
             float priority =  ball_m[i] * c[i].inv_r2;
@@ -420,12 +447,37 @@ private:
         }
         sortBounds(bounds_x, ball_x, 2*N);
         sortBounds(bounds_y, ball_y, 2*N);
+        
+        initPeriod();
+    }
+
+    void initPeriod() {
+        frames_in_period_ = 0;
+        prev_period_best_cost = period_best_cost;
+        period_best_cost = INF;
     }
     
-    void start() {
-        clearState();
-        adjustParameter(iteration_);
-        setInitialState();
+    bool shouldRestart() {
+        if (periods_ >= MAX_PERIODS) return true;
+        if (periods_ < MIN_PERIODS) return false;
+        
+        bool res = false;
+        if (period_best_cost > period_best[periods_-1] * RESTART_THRESHOLD_VS_ITERATION) {
+            res = true;
+        }
+        if (periods_ >= 2 && period_best_cost > prev_period_best_cost * RESTART_THRESHOLD_VS_PERIOD) {
+            res = true;
+        }
+        period_best[periods_-1] = min(period_best[periods_-1], period_best_cost);
+        return res;
+    }
+    
+    void mayRestart() {
+        periods_++;
+        if (shouldRestart())
+            restart();
+        else
+            initPeriod();
     }
     
     void restart() {
@@ -476,7 +528,7 @@ private:
     
     void applyExternalForce(int frame) {
 #if ENABLE_SHAKE
-        if (frame % SHAKE_INTERVAL == 0) {
+        if (frame != 0 && frame % FRAMES_PER_PERIOD == 0) {
             if (hasOverlap()) {
                 expandBalls();
             } else {
@@ -647,6 +699,7 @@ private:
         if (hasOverlap()) return;
         
         float cost = currentCost();
+        period_best_cost = min(period_best_cost, cost);
         if (best_cost > cost) {
 #if PRINT_SCORE_UPDATES
             cerr << "cost: " << cost << endl;

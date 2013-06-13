@@ -179,7 +179,8 @@ void TCO13MM3App::draw()
     // draw current score
     gl::color( Color( 0.0f, 0.0f, 0.0f ) );
     std::stringstream ss;
-    ss << "cost: " << solution->currentCost() << "  " << solution->currentFrame();
+    ss << "cost: " << solution->currentCost() << "\n" <<
+    solution->currentIteration() << "-" << solution->currentPeriod() << " " << solution->currentFrame();
     mTextureFont->drawString(ss.str(),  Vec2f(0, 20) );
 }
 
