@@ -2,8 +2,21 @@
 #include "cinder/gl/gl.h"
 #include "cinder/gl/TextureFont.h"
 #include "CirclesSeparation.h"
-#include "TestCases.h"
 #include <sstream>
+
+#define READ_TEST_FROM_FILE 1
+#define TEST_ID 6
+
+#if READ_TEST_FROM_FILE
+const int NUM_TESTS = 200;
+int NS[NUM_TESTS];
+double* XS[NUM_TESTS];
+double* YS[NUM_TESTS];
+double* RS[NUM_TESTS];
+double* MS[NUM_TESTS];
+#else
+#include "TestCases.h"
+#endif
 
 using namespace ci;
 using namespace ci::app;
@@ -47,12 +60,36 @@ void TCO13MM3App::setup()
     // create font
     mFont = Font( "Arial", 22 );
     mTextureFont = gl::TextureFont::create( mFont );
-    
+
     solution = new CirclesSeparation;
+
+    
+#if READ_TEST_FROM_FILE
+    stringstream ss;
+    ss << "/Users/fuqinho/Dropbox/TCO13MM3/xcode/testcases" << NUM_TESTS << ".txt";
+    freopen(ss.str().c_str(), "r", stdin);
+    for (int i = 0; i < NUM_TESTS; i++) {
+        int n; cin >> n;
+        NS[i] = n;
+        XS[i] = new double[n];
+        YS[i] = new double[n];
+        RS[i] = new double[n];
+        MS[i] = new double[n];
+        for (int j = 0; j < n; j++) cin >> XS[i][j];
+        for (int j = 0; j < n; j++) cin >> YS[i][j];
+        for (int j = 0; j < n; j++) cin >> RS[i][j];
+        for (int j = 0; j < n; j++) cin >> MS[i][j];
+    }
+    solution->setup(vector<double>(XS[TEST_ID-1], XS[TEST_ID-1] + NS[TEST_ID-1]),
+                    vector<double>(YS[TEST_ID-1], YS[TEST_ID-1] + NS[TEST_ID-1]),
+                    vector<double>(RS[TEST_ID-1], RS[TEST_ID-1] + NS[TEST_ID-1]),
+                    vector<double>(MS[TEST_ID-1], MS[TEST_ID-1] + NS[TEST_ID-1]));
+#else
     solution->setup(vector<double>(XX, XX + sizeof(XX)/sizeof(double)),
                     vector<double>(YY, YY + sizeof(YY)/sizeof(double)),
                     vector<double>(RR, RR + sizeof(RR)/sizeof(double)),
                     vector<double>(MM, MM + sizeof(MM)/sizeof(double)));
+#endif
 }
 
 void TCO13MM3App::mouseDown( MouseEvent event )
