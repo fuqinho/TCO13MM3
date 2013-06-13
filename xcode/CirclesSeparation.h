@@ -24,13 +24,13 @@ const float G = 9.8;
 const float E = 0.0;
 const float DECAY_PER_FRAME = 0.002;
 const float TIME_PER_FRAME = 0.0005;
-const float BOUNCE_MARGIN = 0.0002;
-const float ANTI_PENETRATION_COEFFICIENT = 0.6;
+const float BOUNCE_MARGIN = 0.0001;
+const float ANTI_PENETRATION_COEFFICIENT = 0.8;
 const float ANTI_PENETRATION_MILD_COEFFICIENT = 0.03;
 const float ANTI_PENETRATION_MILD_FRAMES = 300;
 const int FRAMES_PER_PERIOD = 2500;
 const int MIN_PERIODS = 2;
-const int MAX_PERIODS = 10;
+const int MAX_PERIODS = 15;
 const float RESTART_THRESHOLD_VS_PERIOD = 1.001;
 const float RESTART_THRESHOLD_VS_ITERATION = 1.01;
 
@@ -471,7 +471,7 @@ private:
         if (periods_ < MIN_PERIODS) return false;
         
         bool res = false;
-        if (period_best_cost > period_best[periods_-1] * RESTART_THRESHOLD_VS_ITERATION) {
+        if (period_best_cost == INF || period_best_cost > period_best[periods_-1] * RESTART_THRESHOLD_VS_ITERATION) {
             res = true;
         }
         if (periods_ >= 2 && period_best_cost > prev_period_best_cost * RESTART_THRESHOLD_VS_PERIOD) {
