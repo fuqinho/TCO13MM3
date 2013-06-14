@@ -594,6 +594,8 @@ private:
                 shakeBalls();
             }
         }
+        if (periods_ == 0 && frame % 500 == 0)
+            shakeBalls();
 #endif
     }
     
