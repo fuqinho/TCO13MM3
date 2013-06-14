@@ -182,6 +182,26 @@ static inline void normalize(float* v) {
     }
 }
 
+static inline float overlapping_area(float x1, float y1, float r1, float x2, float y2, float r2) {
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    float rsum = r1 + r2;
+    float dist_squared = dx*dx + dy*dy;
+    if (dist_squared >= rsum*rsum) {
+        return 0; // no overlap
+    }
+    float a = r2, b = r1, c = sqrt(dist_squared);
+    if (c + min(r1, r2) <= max(r1, r2)) {
+        return (float)M_PI * min(r1, r2) * min(r1, r2); // contained
+    }
+    float cosA = (b*b + c*c - a*a) / (2.0f * b * c);
+    float cosB = (a*a + c*c - b*b) / (2.0f * a * c);
+    float fanA = r1 * r1 * acos(cosA);
+    float fanB = r2 * r2 * acos(cosB);
+    float triangle = c * b * (float)sqrt(1.0 - cosA*cosA);
+    return fanA + fanB - triangle;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Main class
@@ -437,22 +457,40 @@ private:
         
         float filledArea = 0.0;
         vector<int> outer;
+        vector<int> inner;
         for (int i = 0; i < N; i++) {
             int index = priorities[i].second;
             if (filledArea > param_.initial_fill_limit) {
                 outer.push_back(index);
             } else {
+                inner.push_back(index);
                 filledArea += ball_r[index] * ball_r[index] * 3.14;
             }
         }
         for (int i = 0; i < outer.size(); i++) {
             int index = outer[i];
-            float d[2];
-            d[0] = ball_x[index] - 0.5;
-            d[1] = ball_y[index] - 0.5;
-            normalize(d);
-            ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 3);
-            ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 3);
+            bool canInsert = false;
+            if (i < outer.size() / 3) {
+                double area_sum = ball_r[index] * ball_r[index] * 3.14f;;
+                double search_r = input_stats_.max_r;
+                for (int j = 0; j < inner.size(); j++) {
+                    int id2 = inner[j];
+                    area_sum += overlapping_area(ball_x[index], ball_y[index], search_r,
+                                                 ball_x[id2], ball_y[id2], ball_r[id2]);
+                }
+                if (area_sum < search_r * search_r * 3.14f * 0.9f) {
+                    canInsert = true;
+                    inner.push_back(index);
+                }
+            }
+            if (!canInsert) {
+                float d[2];
+                d[0] = ball_x[index] - 0.5;
+                d[1] = ball_y[index] - 0.5;
+                normalize(d);
+                ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 3);
+                ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 3);
+            }
         }
         sortBounds(bounds_x, ball_x, 2*N);
         sortBounds(bounds_y, ball_y, 2*N);
