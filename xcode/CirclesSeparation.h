@@ -30,7 +30,7 @@ const float ANTI_PENETRATION_MILD_COEFFICIENT = 0.03;
 const float ANTI_PENETRATION_MILD_FRAMES = 300;
 const int FRAMES_PER_PERIOD = 2500;
 const int MIN_PERIODS = 2;
-const int MAX_PERIODS = 15;
+const int MAX_PERIODS = 11;
 const float RESTART_THRESHOLD_VS_PERIOD = 1.001;
 const float RESTART_THRESHOLD_VS_ITERATION = 1.01;
 
@@ -468,6 +468,17 @@ private:
                 filledArea += ball_r[index] * ball_r[index] * 3.14;
             }
         }
+        
+        // find weighted center
+        float xsum = 0, ysum = 0, msum = 0;
+        for (int i = 0; i < N; i++) {
+            msum += ball_m[i];
+            xsum += ball_m[i] * ball_x[i];
+            ysum += ball_m[i] * ball_y[i];
+        }
+        float center_x = xsum / msum;
+        float center_y = ysum / msum;
+        
         for (int i = 0; i < outer.size(); i++) {
             int index = outer[i];
             bool canInsert = false;
@@ -486,8 +497,8 @@ private:
             }
             if (!canInsert) {
                 float d[2];
-                d[0] = ball_x[index] - 0.5;
-                d[1] = ball_y[index] - 0.5;
+                d[0] = ball_x[index] - center_x;
+                d[1] = ball_y[index] - center_y;
                 normalize(d);
                 ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 3);
                 ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 3);
