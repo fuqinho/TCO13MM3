@@ -413,7 +413,8 @@ private:
     }
     
     void adjustParameter(int iteration) {
-        param_.initial_fill_limit = 0.8 + 0.4 * (float)rand() / RAND_MAX;
+        rand();
+        param_.initial_fill_limit = 0.6 + 0.6 * (float)rand() / RAND_MAX;
     }
     
     void start() {
