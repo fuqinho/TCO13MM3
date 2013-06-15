@@ -418,7 +418,7 @@ private:
     }
     
     void adjustParameter(int iteration) {
-        param_.initial_fill_limit = 0.6 + 0.6 * (float)randxor() / UINT_MAX;
+        param_.initial_fill_limit = 0.65 + 0.5 * (float)randxor() / UINT_MAX;
     }
     
     void start() {
