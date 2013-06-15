@@ -2,11 +2,11 @@
 // Flags
 ////////////////////////////////////////////////////////////////////////////////////
 
-#define PROFILE 1
-#define PRINT_SIMULATED_FRAMES 1
-#define PRINT_SCORE_UPDATES 1
-#define PRINT_BEST_PARAMETERS 1
-#define PRINT_BEST_PARAMETERS_PERIODICALLY 1
+#define PROFILE 0
+#define PRINT_SIMULATED_FRAMES 0
+#define PRINT_SCORE_UPDATES 0
+#define PRINT_BEST_PARAMETERS 0
+#define PRINT_BEST_PARAMETERS_PERIODICALLY 0
 
 #define ENABLE_RESTART 1
 #define ENABLE_SHAKE 1
@@ -33,6 +33,7 @@ const int MIN_PERIODS = 2;
 const int MAX_PERIODS = 11;
 const float RESTART_THRESHOLD_VS_PERIOD = 1.001;
 const float RESTART_THRESHOLD_VS_ITERATION = 1.01;
+const int MAX_RETRY_COUNT = 2;
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -141,6 +142,7 @@ unsigned int bounds_y[MAX_N*2];
 unsigned int BOUNDS_ISLEFT_BIT = (1<<16);
 unsigned int BOUNDS_NODEID_MASK = (1<<16) - 1;
 
+
 int collisions[MAX_N * 8];
 int num_collisions;
 
@@ -150,6 +152,18 @@ Candidate* candidates_list_head;
 
 float m_mul_div_sum[MAX_N][MAX_N];
 float period_best[MAX_N];
+
+float memo_ball_x[MAX_N];
+float memo_ball_y[MAX_N];
+float memo_ball_vx[MAX_N];
+float memo_ball_vy[MAX_N];
+float memo_bounds_x[MAX_N*2];
+float memo_bounds_y[MAX_N*2];
+int memo_overlapping_count[MAX_N][MAX_N];
+Candidate memo_candidates[MAX_N][MAX_N];
+Candidate* memo_andidates_list_head;
+
+
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -338,7 +352,7 @@ public:
         }
     }
     
-
+    
 private:
     
     int frames_;
@@ -426,7 +440,7 @@ private:
         frames_ = 0;
         periods_ = 0;
         period_best_cost = prev_period_best_cost = INF;
-
+        
         // clear state of balls and collisions
         for (int i = 0; i < N; i++) {
             ball_vx[i] = ball_vy[i] = 0.0f;
@@ -446,7 +460,7 @@ private:
             bounds_y[2*i] = i | BOUNDS_ISLEFT_BIT;
             bounds_y[2*i+1] = i;
         }
-
+        
         // set initial position for balls
         vector<pair<float, int> > priorities(N);
         for (int i = 0; i < N; i++) {
@@ -509,7 +523,7 @@ private:
         
         initPeriod();
     }
-
+    
     void initPeriod() {
         frames_in_period_ = 0;
         prev_period_best_cost = period_best_cost;
@@ -532,11 +546,24 @@ private:
     }
     
     void mayRestart() {
-        periods_++;
-        if (shouldRestart())
-            restart();
-        else
+        static int retry_count = 0;
+        if (period_best_cost == best_cost) saveCurrentState();
+        
+        if (iteration_ > 1 && prev_period_best_cost == best_cost && period_best_cost > best_cost
+                && retry_count < MAX_RETRY_COUNT) {
+            // back to the end of previous period and retry
+            retry_count++;
+            loadCurrentState();
+            period_best_cost = prev_period_best_cost;
             initPeriod();
+        } else {
+            retry_count = 0;
+            periods_++;
+            if (shouldRestart())
+                restart();
+            else
+                initPeriod();
+        }
     }
     
     void restart() {
@@ -777,8 +804,8 @@ private:
     void printBestParams() {
 #if PRINT_BEST_PARAMETERS
         cerr << N << '\t'
-            << input_stats_.total_area << '\t' << input_stats_.max_r << '\t'
-            << best_param_.initial_fill_limit << endl;
+        << input_stats_.total_area << '\t' << input_stats_.max_r << '\t'
+        << best_param_.initial_fill_limit << endl;
 #endif
     }
     
@@ -829,5 +856,30 @@ private:
             }
         }
     }
+    
+    void saveCurrentState() {
+        memcpy(memo_ball_x, ball_x, sizeof(float) * N);
+        memcpy(memo_ball_y, ball_y, sizeof(float) * N);
+        memcpy(memo_ball_vx, ball_vx, sizeof(float) * N);
+        memcpy(memo_ball_vy, ball_vy, sizeof(float) * N);
+        memcpy(memo_bounds_x, bounds_x, sizeof(float) * N * 2);
+        memcpy(memo_bounds_y, bounds_y, sizeof(float) * N * 2);
+        memcpy(memo_overlapping_count, overlapping_count, sizeof(overlapping_count));
+        memcpy(memo_candidates, candidates, sizeof(candidates));
+        memo_andidates_list_head = candidates_list_head;
+    }
+    
+    void loadCurrentState() {
+        memcpy(ball_x, memo_ball_x, sizeof(float) * N);
+        memcpy(ball_y, memo_ball_y, sizeof(float) * N);
+        memcpy(ball_vx, memo_ball_vx, sizeof(float) * N);
+        memcpy(ball_vy, memo_ball_vy, sizeof(float) * N);
+        memcpy(bounds_x, memo_bounds_x, sizeof(float) * N * 2);
+        memcpy(bounds_y, memo_bounds_y, sizeof(float) * N * 2);
+        memcpy(overlapping_count, memo_overlapping_count, sizeof(overlapping_count));
+        memcpy(candidates, memo_candidates, sizeof(candidates));
+        candidates_list_head = memo_andidates_list_head;
+    }
 };
+
 
