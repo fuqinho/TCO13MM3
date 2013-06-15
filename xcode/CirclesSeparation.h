@@ -2,11 +2,12 @@
 // Flags
 ////////////////////////////////////////////////////////////////////////////////////
 
-#define PROFILE 1
+#define PROFILE 0
 #define PRINT_SIMULATED_FRAMES 0
-#define PRINT_SCORE_UPDATES 1
+#define PRINT_SCORE_UPDATES 0
 #define PRINT_BEST_PARAMETERS 0
 #define PRINT_BEST_PARAMETERS_PERIODICALLY 0
+#define PRINT_TRIALS 0
 
 #define ENABLE_RESTART 1
 #define ENABLE_SHAKE 1
@@ -17,7 +18,7 @@
 ////////////////////////////////////////////////////////////////////////////////////
 
 const int MAX_N = 512;
-const float MAX_RUNNING_TIME = 9.5;
+const float MAX_RUNNING_TIME = 9.6;
 //const float MAX_RUNNING_TIME = 2.7;
 const float INF = 1e100;
 const float G = 9.8;
@@ -110,7 +111,16 @@ struct InputStats {
 
 struct Parameter {
     float initial_fill_limit;
+    int first_shake_dir;
 };
+
+struct Trial {
+    Parameter param;
+    float score;
+};
+bool lessScore(const Trial& lhs, const Trial& rhs) {
+    return lhs.score < rhs.score;
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -222,7 +232,9 @@ static inline float overlapping_area(float x1, float y1, float r1, float x2, flo
 
 class CirclesSeparation {
 public:
-    CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), periods_(0), frames_in_period_(0), iteration_(0) {}
+    vector<Trial> trials;
+    CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), periods_(0),
+    frames_in_period_(0), iteration_(0), iteration_score_(INF) {}
     
     vector<double> minimumWork(vector<double> x, vector<double> y, vector<double> r, vector<double> m) {
         const clock_t end__ = clock() + MAX_RUNNING_TIME * CLOCKS_PER_SEC;
@@ -243,7 +255,18 @@ public:
         analyzeInput();
         determineParameter();
         precomputeValues();
+        setupTrials();
         start();
+    }
+    
+    void setupTrials() {
+        trials = vector<Trial>(8);
+        for (int i = 0; i < 8; i++) {
+            trials[i].param.first_shake_dir = i % 4;
+            trials[i].param.initial_fill_limit = 0.5 + 0.1 * i;
+            trials[i].score = INF;
+        }
+        random_shuffle(trials.begin(), trials.end(), myrandom);
     }
     
     void update() {
@@ -359,6 +382,7 @@ private:
     int periods_;
     int frames_in_period_;
     int iteration_;
+    float iteration_score_;
     float period_best_cost, prev_period_best_cost;
     int hover_circle_;
     
@@ -418,7 +442,46 @@ private:
     }
     
     void adjustParameter(int iteration) {
-        param_.initial_fill_limit = 0.65 + 0.5 * (float)randxor() / UINT_MAX;
+        if (iteration != 0) {
+            trials[(iteration-1)%trials.size()].score = iteration_score_;
+        }
+        if (iteration != 0 && iteration % trials.size() == 0) {
+            // reset trials
+            sort(trials.begin(), trials.end(), lessScore);
+#if PRINT_TRIALS
+            cerr << "============RESULT===========" << endl;
+            for (int i = 0; i < trials.size(); i++) {
+                cerr << trials[i].param.initial_fill_limit << "/" << trials[i].param.first_shake_dir << ": "
+                << trials[i].score << endl;
+            }
+#endif
+            
+            vector<Trial> newtrials(trials.size());
+            for (int i = 0; i < trials.size() - 2; i++) {
+                int a = randxor() % (trials.size() / 2);
+                int b = randxor() % (trials.size() / 2);
+                float minl = min(trials[a].param.initial_fill_limit, trials[b].param.initial_fill_limit) - 0.03;
+                float maxl = max(trials[a].param.initial_fill_limit, trials[b].param.initial_fill_limit) + 0.03;
+                if (minl < 0) minl = 0;
+                float newlimit = minl + (maxl - minl) * randxor() / UINT_MAX;
+                float newdir = randxor() % 2 == 0 ? trials[a].param.first_shake_dir : trials[b].param.first_shake_dir;
+                newtrials[i].param.initial_fill_limit = newlimit;
+                newtrials[i].param.first_shake_dir = newdir;
+            }
+            newtrials[trials.size()-2] = trials[0];
+            newtrials[trials.size()-1].param.initial_fill_limit = 0.4 + 1.0 * randxor() / UINT_MAX;
+            newtrials[trials.size()-1].param.first_shake_dir = randxor() % 4;
+            trials = newtrials;
+#if PRINT_TRIALS
+            cerr << "=============NEW=============" << endl;
+            for (int i = 0; i < trials.size(); i++) {
+                cerr << trials[i].param.initial_fill_limit << "/" << trials[i].param.first_shake_dir << endl;
+            }
+#endif
+            random_shuffle(trials.begin(), trials.end(), myrandom);
+        }
+        param_.initial_fill_limit = trials[iteration % trials.size()].param.initial_fill_limit;
+        param_.first_shake_dir = trials[iteration % trials.size()].param.first_shake_dir;
     }
     
     void start() {
@@ -430,6 +493,7 @@ private:
         frames_ = 0;
         periods_ = 0;
         period_best_cost = prev_period_best_cost = INF;
+        iteration_score_ = INF;
         
         // clear state of balls and collisions
         for (int i = 0; i < N; i++) {
@@ -521,7 +585,7 @@ private:
     }
     
     bool shouldRestart() {
-        if (periods_ >= min(MAX_PERIODS, iteration_ + 3)) return true;
+        if (periods_ >= MAX_PERIODS || (iteration_ < trials.size() && periods_ >= 3)) return true;
         if (periods_ < MIN_PERIODS) return false;
         
         bool res = false;
@@ -540,7 +604,7 @@ private:
         if (period_best_cost == best_cost) saveCurrentState();
         
         if (iteration_ > 1 && prev_period_best_cost == best_cost && period_best_cost > best_cost
-                && retry_count < MAX_RETRY_COUNT) {
+            && retry_count < MAX_RETRY_COUNT) {
             // back to the end of previous period and retry
             retry_count++;
             loadCurrentState();
@@ -779,6 +843,7 @@ private:
         
         float cost = currentCost();
         period_best_cost = min(period_best_cost, cost);
+        iteration_score_ = min(iteration_score_, cost);
         if (best_cost > cost) {
 #if PRINT_SCORE_UPDATES
             cerr << "cost: " << cost << endl;
@@ -869,5 +934,6 @@ private:
         candidates_list_head = memo_andidates_list_head;
     }
 };
+
 
 
