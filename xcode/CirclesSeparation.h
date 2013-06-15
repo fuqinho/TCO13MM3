@@ -2,9 +2,9 @@
 // Flags
 ////////////////////////////////////////////////////////////////////////////////////
 
-#define PROFILE 0
+#define PROFILE 1
 #define PRINT_SIMULATED_FRAMES 0
-#define PRINT_SCORE_UPDATES 0
+#define PRINT_SCORE_UPDATES 1
 #define PRINT_BEST_PARAMETERS 0
 #define PRINT_BEST_PARAMETERS_PERIODICALLY 0
 
@@ -34,6 +34,7 @@ const int MAX_PERIODS = 11;
 const float RESTART_THRESHOLD_VS_PERIOD = 1.001;
 const float RESTART_THRESHOLD_VS_ITERATION = 1.01;
 const int MAX_RETRY_COUNT = 2;
+const float SHAKE_ACCEL = 2000;
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -775,10 +776,10 @@ private:
         static int shake_dir = 0;
         static const float DX[] = {-1, 1, 0, 0};
         static const float DY[] = {0 ,0, -1, 1};
-        
+        static const float DV = SHAKE_ACCEL * TIME_PER_FRAME;
         for (int i = 0; i < N; i++) {
-            ball_vx[i] += DX[shake_dir];
-            ball_vy[i] += DY[shake_dir];
+            ball_vx[i] += DX[shake_dir] * DV;
+            ball_vy[i] += DY[shake_dir] * DV;
         }
         shake_dir = (shake_dir + 1) % 4;
     }
