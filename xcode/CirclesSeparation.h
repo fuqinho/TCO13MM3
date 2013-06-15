@@ -521,7 +521,7 @@ private:
     }
     
     bool shouldRestart() {
-        if (periods_ >= MAX_PERIODS) return true;
+        if (periods_ >= min(MAX_PERIODS, iteration_ + 3)) return true;
         if (periods_ < MIN_PERIODS) return false;
         
         bool res = false;
