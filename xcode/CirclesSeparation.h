@@ -349,6 +349,8 @@ public:
         }
     }
     
+    InputStats input_stats_;
+    Parameter param_, best_param_;
     
 private:
     
@@ -358,8 +360,6 @@ private:
     int frames_in_period_;
     int iteration_;
     float period_best_cost, prev_period_best_cost;
-    InputStats input_stats_;
-    Parameter param_, best_param_;
     int hover_circle_;
     
     void initializeOnce() {
