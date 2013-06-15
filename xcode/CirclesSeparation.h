@@ -93,11 +93,8 @@ Profiler prof;
 
 struct Circle
 {
-    bool is_hover;
     int index;
     float m;
-    float inv_r2;
-    float inv_m;
 };
 
 struct Candidate {
@@ -135,8 +132,9 @@ float ball_vx[MAX_N]__attribute__((aligned(16)));
 float ball_vy[MAX_N]__attribute__((aligned(16)));
 float ball_ox[MAX_N]__attribute__((aligned(16)));
 float ball_oy[MAX_N]__attribute__((aligned(16)));
-int ball_index[MAX_N]__attribute__((aligned(16)));;
+int ball_index[MAX_N]__attribute__((aligned(16)));
 float ball_gravity[MAX_N]__attribute__((aligned(16)));
+float ball_inv_m[MAX_N]__attribute__((aligned(16)));
 
 unsigned int bounds_x[MAX_N*2];
 unsigned int bounds_y[MAX_N*2];
@@ -330,7 +328,6 @@ public:
             d[0] = x - ball_x[i];
             d[1] = y - ball_y[i];
             if (d[0]*d[0] + d[1]*d[1] < ball_r[i]*ball_r[i]) {
-                c[i].is_hover = true;
                 ball_vx[i] = 0;
                 ball_vy[i] = 0;
                 hover_circle_ = i;
@@ -348,7 +345,6 @@ public:
     
     void release_circle() {
         if (hover_circle_ >= 0) {
-            c[hover_circle_].is_hover = false;
             hover_circle_ = -1;
         }
     }
@@ -383,7 +379,6 @@ private:
             // properties
             c[i].index = i;
             c[i].m = m[i];
-            c[i].is_hover = false;
         }
         
         // order circles. (heavier is prior)
@@ -412,10 +407,8 @@ private:
     void precomputeValues() {
         // precompute for balls
         for (int i = 0; i < N; i++) {
-            c[i].inv_r2 = 1.0 / input_r[c[i].index] / input_r[c[i].index];
-            c[i].inv_m = 1.0 / input_m[c[i].index];
-            
-            ball_gravity[i] = G * TIME_PER_FRAME * min(3.0, 1 + 0.003 * ball_m[i] * c[i].inv_r2);
+            ball_inv_m[i] = 1.0f / ball_m[i];
+            ball_gravity[i] = G * TIME_PER_FRAME * min(3.0, 1 + 0.003 * ball_m[i] / ball_r[i] / ball_r[i]);
         }
         
         // precompute for pairs
@@ -424,12 +417,8 @@ private:
         }
     }
     
-    void clearState() {
-    }
-    
     void adjustParameter(int iteration) {
-        rand();
-        param_.initial_fill_limit = 0.6 + 0.6 * (float)rand() / RAND_MAX;
+        param_.initial_fill_limit = 0.6 + 0.6 * (float)randxor() / UINT_MAX;
     }
     
     void start() {
@@ -465,7 +454,7 @@ private:
         // set initial position for balls
         vector<pair<float, int> > priorities(N);
         for (int i = 0; i < N; i++) {
-            float priority =  ball_m[i] * c[i].inv_r2;
+            float priority = ball_m[i] / ball_r[i] / ball_r[i];
             priorities[i].first = priority;
             priorities[i].second = i;
         }
@@ -652,7 +641,6 @@ private:
         for (int k = 0; k < num_collisions; k++) {
             int i = collisions[k] >> 16;
             int j = collisions[k] & ((1<<16)-1);
-            if (c[i].is_hover || c[j].is_hover) continue;
             float norm[2];
             norm[0] = ball_x[j] - ball_x[i];
             norm[1] = ball_y[j] - ball_y[i];
@@ -668,10 +656,12 @@ private:
             float CDD = CD * (minimum_distance - len);
             float C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
             
-            ball_vx[i] += norm[0] * C * c[i].inv_m;
-            ball_vy[i] += norm[1] * C * c[i].inv_m;
-            ball_vx[j] -= norm[0] * C * c[j].inv_m;
-            ball_vy[j] -= norm[1] * C * c[j].inv_m;
+            float ci = C * ball_inv_m[i];
+            float cj = C * ball_inv_m[j];
+            ball_vx[i] += norm[0] * ci;
+            ball_vy[i] += norm[1] * ci;
+            ball_vx[j] -= norm[0] * cj;
+            ball_vy[j] -= norm[1] * cj;
         }
     }
     
@@ -812,8 +802,6 @@ private:
     
     void pushPairToList(int a, int b) {
         Candidate* node = &candidates[a][b];
-        node->a = a;
-        node->b = b;
         if (candidates_list_head) {
             candidates_list_head->prev = node;
         }
@@ -832,16 +820,15 @@ private:
     }
     
     void sortBounds(unsigned int* bounds, float* pos, int size) {
-        for (int i = 0; i < size; i++) {
+        for (int i = 1; i < size; i++) {
             int j = i-1;
-            if (j < 0) continue;
             while (j >= 0) {
-                int id0 = (bounds[j] & BOUNDS_NODEID_MASK);
-                int id1 = (bounds[j+1] & BOUNDS_NODEID_MASK);
-                float pos0 = pos[id0] + (ball_r[id0] + BOUNCE_MARGIN) * ((bounds[j] & BOUNDS_ISLEFT_BIT) ? -1 : 1);
-                float pos1 =  pos[id1] + (ball_r[id1] + BOUNCE_MARGIN) * ((bounds[j+1] & BOUNDS_ISLEFT_BIT) ? -1 : 1);
+                int a = (bounds[j] & BOUNDS_NODEID_MASK);
+                int b = (bounds[j+1] & BOUNDS_NODEID_MASK);
+                float pos0 = pos[a] + (ball_r[a] + BOUNCE_MARGIN) * ((bounds[j] & BOUNDS_ISLEFT_BIT) ? -1 : 1);
+                float pos1 =  pos[b] + (ball_r[b] + BOUNCE_MARGIN) * ((bounds[j+1] & BOUNDS_ISLEFT_BIT) ? -1 : 1);
                 if (pos0 > pos1) {
-                    int a = min(id0, id1), b = max(id0, id1);
+                    if (a > b) swap(a, b);
                     if (!(bounds[j] & BOUNDS_ISLEFT_BIT) && (bounds[j+1] & BOUNDS_ISLEFT_BIT)) {
                         overlapping_count[a][b]++;
                         if (overlapping_count[a][b] == 2) pushPairToList(a, b);
