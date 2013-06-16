@@ -431,9 +431,10 @@ private:
     
     void precomputeValues() {
         // precompute for balls
+        float avg_dens = N * 0.5 / input_stats_.total_area;
         for (int i = 0; i < N; i++) {
             ball_inv_m[i] = 1.0f / ball_m[i];
-            ball_gravity[i] = G * TIME_PER_FRAME * min(2.0, 1 + 0.003 * ball_m[i] / ball_r[i] / ball_r[i]);
+            ball_gravity[i] = G * TIME_PER_FRAME * min(2.0, 1 + 0.1 * (ball_m[i] / ball_r[i] / ball_r[i]) / avg_dens);
         }
         
         // precompute for pairs
@@ -935,6 +936,7 @@ private:
         candidates_list_head = memo_andidates_list_head;
     }
 };
+
 
 
 
