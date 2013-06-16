@@ -433,7 +433,7 @@ private:
         // precompute for balls
         for (int i = 0; i < N; i++) {
             ball_inv_m[i] = 1.0f / ball_m[i];
-            ball_gravity[i] = G * TIME_PER_FRAME * min(3.0, 1 + 0.003 * ball_m[i] / ball_r[i] / ball_r[i]);
+            ball_gravity[i] = G * TIME_PER_FRAME * min(2.0, 1 + 0.003 * ball_m[i] / ball_r[i] / ball_r[i]);
         }
         
         // precompute for pairs
