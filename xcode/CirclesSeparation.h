@@ -4,10 +4,10 @@
 
 #define PROFILE 0
 #define PRINT_SIMULATED_FRAMES 0
-#define PRINT_SCORE_UPDATES 0
+#define PRINT_SCORE_UPDATES 1
 #define PRINT_BEST_PARAMETERS 0
 #define PRINT_BEST_PARAMETERS_PERIODICALLY 0
-#define PRINT_TRIALS 0
+#define PRINT_TRIALS 1
 
 #define ENABLE_RESTART 1
 #define ENABLE_SHAKE 1
@@ -385,6 +385,7 @@ private:
     float iteration_score_;
     float period_best_cost, prev_period_best_cost;
     int hover_circle_;
+    int shake_dir_;
     
     void initializeOnce() {
         srand(10);
@@ -494,6 +495,7 @@ private:
         periods_ = 0;
         period_best_cost = prev_period_best_cost = INF;
         iteration_score_ = INF;
+        shake_dir_ = param_.first_shake_dir;
         
         // clear state of balls and collisions
         for (int i = 0; i < N; i++) {
@@ -827,15 +829,14 @@ private:
     }
     
     void shakeBalls() {
-        static int shake_dir = 0;
         static const float DX[] = {-1, 1, 0, 0};
         static const float DY[] = {0 ,0, -1, 1};
         static const float DV = SHAKE_ACCEL * TIME_PER_FRAME;
         for (int i = 0; i < N; i++) {
-            ball_vx[i] += DX[shake_dir] * DV;
-            ball_vy[i] += DY[shake_dir] * DV;
+            ball_vx[i] += DX[shake_dir_] * DV;
+            ball_vy[i] += DY[shake_dir_] * DV;
         }
-        shake_dir = (shake_dir + 1) % 4;
+        shake_dir_ = (shake_dir_ + 1) % 4;
     }
     
     void updateBest() {
