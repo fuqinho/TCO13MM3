@@ -35,7 +35,7 @@ const int MAX_PERIODS = 11;
 const float RESTART_THRESHOLD_VS_PERIOD = 1.001;
 const float RESTART_THRESHOLD_VS_ITERATION = 1.01;
 const int MAX_RETRY_COUNT = 2;
-const float SHAKE_ACCEL = 2000;
+const float SHAKE_ACCEL = 2500;
 
 
 ////////////////////////////////////////////////////////////////////////////////////
