@@ -35,7 +35,7 @@ const int MAX_PERIODS = 11;
 const float RESTART_THRESHOLD_VS_PERIOD = 1.001;
 const float RESTART_THRESHOLD_VS_ITERATION = 1.01;
 const int MAX_RETRY_COUNT = 2;
-const float SHAKE_ACCEL = 2500;
+float SHAKE_ACCEL = 2500;
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -484,6 +484,7 @@ private:
         }
         param_.initial_fill_limit = trials[iteration % trials.size()].param.initial_fill_limit;
         param_.first_shake_dir = trials[iteration % trials.size()].param.first_shake_dir;
+        SHAKE_ACCEL = 2000.0f + 1000.0f * randxor() / UINT_MAX;
     }
     
     void start() {
@@ -832,7 +833,7 @@ private:
     void shakeBalls() {
         static const float DX[] = {-1, 1, 0, 0};
         static const float DY[] = {0 ,0, -1, 1};
-        static const float DV = SHAKE_ACCEL * TIME_PER_FRAME;
+        float DV = SHAKE_ACCEL * TIME_PER_FRAME;
         for (int i = 0; i < N; i++) {
             ball_vx[i] += DX[shake_dir_] * DV;
             ball_vy[i] += DY[shake_dir_] * DV;
