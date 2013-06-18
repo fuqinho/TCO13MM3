@@ -235,13 +235,17 @@ class CirclesSeparation {
 public:
     vector<Trial> trials;
     CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), periods_(0),
-    frames_in_period_(0), iteration_(0), iteration_score_(INF), paused_(false) {}
+    frames_in_period_(0), iteration_(0), iteration_score_(INF), paused_(false), progress_(0.0) {}
     
     vector<double> minimumWork(vector<double> x, vector<double> y, vector<double> r, vector<double> m) {
-        const clock_t end__ = clock() + MAX_RUNNING_TIME * CLOCKS_PER_SEC;
+        clock_t start = clock();
         
         setup(x, y, r, m);
-        while (clock() < end__) for (int i=0; i<100; i++) update();
+        while (progress_ < 1.0f) {
+            for (int i=0; i<100; i++) update();
+            clock_t now = clock();
+            progress_ = (float)(now - start) / (MAX_RUNNING_TIME * CLOCKS_PER_SEC);
+        }
 #if PRINT_SIMULATED_FRAMES
         cerr << "total_frames: " << total_frames_ << endl;
 #endif
@@ -407,6 +411,7 @@ private:
     int shake_dir_;
     bool paused_;
     float fill_limit_lb_, fill_limit_ub_;
+    float progress_;
     
     void initializeOnce() {
         srand(10);
