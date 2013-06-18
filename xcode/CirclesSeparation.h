@@ -17,9 +17,8 @@
 // Constant values
 ////////////////////////////////////////////////////////////////////////////////////
 
+float MAX_RUNNING_TIME = 9.6;
 const int MAX_N = 512;
-const float MAX_RUNNING_TIME = 9.6;
-//const float MAX_RUNNING_TIME = 2.7;
 const float INF = 1e100;
 const float G = 9.8;
 const float E = 0.0;
@@ -145,6 +144,8 @@ float ball_oy[MAX_N]__attribute__((aligned(16)));
 int ball_index[MAX_N]__attribute__((aligned(16)));
 float ball_gravity[MAX_N]__attribute__((aligned(16)));
 float ball_inv_m[MAX_N]__attribute__((aligned(16)));
+float best_x[MAX_N]__attribute__((aligned(16)));
+float best_y[MAX_N]__attribute__((aligned(16)));
 
 unsigned int bounds_x[MAX_N*2];
 unsigned int bounds_y[MAX_N*2];
@@ -246,7 +247,12 @@ public:
 #endif
         printBestParams();
         
-        return vector<double>(best_result, best_result + N * 2);
+        vector<double> res(2*N);
+        for (int i=0; i<N; i++) {
+            res[ball_index[i] * 2] = best_x[i];
+            res[ball_index[i] * 2 + 1] = best_y[i];
+        }
+        return res;
     }
     
     void setup(const vector<double>& x, const vector<double>& y, const vector<double>& r, const vector<double>& m) {
@@ -867,8 +873,8 @@ private:
 #endif
             best_cost = cost;
             for (int i = 0; i < N; i++) {
-                best_result[ball_index[i] * 2] = ball_x[i];
-                best_result[ball_index[i] * 2 + 1] = ball_y[i];
+                best_x[i] = ball_x[i];
+                best_y[i] = ball_y[i];
             }
             best_param_ = param_;
         }
