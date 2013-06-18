@@ -4,8 +4,9 @@
 #include "CirclesSeparation.h"
 #include <sstream>
 
+#define SHOW_BEST_LAYOUT 0
 #define READ_TEST_FROM_FILE 1
-#define TEST_ID 6
+#define TEST_ID 113
 
 #if READ_TEST_FROM_FILE
 const int NUM_TESTS = 200;
@@ -16,6 +17,11 @@ double* RS[NUM_TESTS];
 double* MS[NUM_TESTS];
 #else
 #include "TestCases.h"
+#endif
+
+
+#if SHOW_BEST_LAYOUT
+#include "BestLayout.h"
 #endif
 
 using namespace ci;
@@ -37,6 +43,7 @@ public:
 	void mouseDown( MouseEvent event );
     void mouseUp( MouseEvent event );
     void mouseDrag( MouseEvent event );
+    void keyDown( KeyEvent event );
 	void update();
 	void draw();
 private:
@@ -84,12 +91,20 @@ void TCO13MM3App::setup()
                     vector<double>(YS[TEST_ID-1], YS[TEST_ID-1] + NS[TEST_ID-1]),
                     vector<double>(RS[TEST_ID-1], RS[TEST_ID-1] + NS[TEST_ID-1]),
                     vector<double>(MS[TEST_ID-1], MS[TEST_ID-1] + NS[TEST_ID-1]));
+    
 #else
     solution->setup(vector<double>(XX, XX + sizeof(XX)/sizeof(double)),
                     vector<double>(YY, YY + sizeof(YY)/sizeof(double)),
                     vector<double>(RR, RR + sizeof(RR)/sizeof(double)),
                     vector<double>(MM, MM + sizeof(MM)/sizeof(double)));
 #endif
+    
+#if SHOW_BEST_LAYOUT
+    solution->ctrlTogglePause();
+    solution->ctrlSetPositions(vector<double>(BX[TEST_ID-101], BX[TEST_ID-101] + 500),
+                               vector<double>(BY[TEST_ID-101], BY[TEST_ID-101] + 500));
+#endif
+    
 }
 
 void TCO13MM3App::mouseDown( MouseEvent event )
@@ -107,6 +122,18 @@ void TCO13MM3App::mouseDrag( MouseEvent event )
 {
     solution->move_circle(prj_left + event.getX() / prj_ratio,
                           prj_top + event.getY() / prj_ratio);
+}
+
+void TCO13MM3App::keyDown( KeyEvent event )
+{
+    switch (event.getCode()) {
+        case KeyEvent::KEY_SPACE:
+            solution->ctrlTogglePause();
+            break;
+            
+        default:
+            break;
+    }
 }
 
 void TCO13MM3App::update()

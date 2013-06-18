@@ -234,7 +234,7 @@ class CirclesSeparation {
 public:
     vector<Trial> trials;
     CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), periods_(0),
-    frames_in_period_(0), iteration_(0), iteration_score_(INF) {}
+    frames_in_period_(0), iteration_(0), iteration_score_(INF), paused_(false) {}
     
     vector<double> minimumWork(vector<double> x, vector<double> y, vector<double> r, vector<double> m) {
         const clock_t end__ = clock() + MAX_RUNNING_TIME * CLOCKS_PER_SEC;
@@ -270,6 +270,7 @@ public:
     }
     
     void update() {
+        if (paused_) return;
         ///////////////////////////////////////////////////////
         // apply force
         PROF_START();
@@ -372,11 +373,23 @@ public:
         }
     }
     
+    void ctrlSetPositions(const vector<double>& xs, const vector<double>& ys) {
+        
+        for (int i = 0; i < N; i++) {
+            cerr << "(" << xs[i] << "," << ys[i] << "), ";
+            ball_x[i] = xs[ball_index[i]];
+            ball_y[i] = ys[ball_index[i]];
+        }
+    }
+    
+    void ctrlTogglePause() {
+        paused_ = !paused_;
+    }
+    
     InputStats input_stats_;
     Parameter param_, best_param_;
     
 private:
-    
     int frames_;
     int total_frames_;
     int periods_;
@@ -386,6 +399,7 @@ private:
     float period_best_cost, prev_period_best_cost;
     int hover_circle_;
     int shake_dir_;
+    bool paused_;
     
     void initializeOnce() {
         srand(10);
