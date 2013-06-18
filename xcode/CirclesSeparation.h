@@ -470,7 +470,7 @@ private:
         float avg_dens = N * 0.5 / input_stats_.total_area;
         for (int i = 0; i < N; i++) {
             ball_inv_m[i] = 1.0f / ball_m[i];
-            ball_gravity[i] = G * TIME_PER_FRAME * min(2.0, 1 + 0.1 * (ball_m[i] / ball_r[i] / ball_r[i]) / avg_dens);
+            ball_gravity[i] = G * TIME_PER_FRAME * min(2.0f, 1 + 0.2f * (ball_m[i] / ball_r[i] / ball_r[i]) / avg_dens);
         }
         
         // precompute for pairs
