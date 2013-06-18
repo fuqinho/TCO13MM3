@@ -162,6 +162,9 @@ Candidate* candidates_list_head;
 
 float m_mul_div_sum[MAX_N][MAX_N];
 float period_best[MAX_N];
+const int NUM_TRIALS = 8;
+Trial trials[NUM_TRIALS];
+Trial trials_buf[NUM_TRIALS];
 
 float memo_ball_x[MAX_N];
 float memo_ball_y[MAX_N];
@@ -233,7 +236,6 @@ static inline float overlapping_area(float x1, float y1, float r1, float x2, flo
 
 class CirclesSeparation {
 public:
-    vector<Trial> trials;
     CirclesSeparation(): hover_circle_(-1), frames_(0), total_frames_(0), periods_(0),
     frames_in_period_(0), iteration_(0), iteration_score_(INF), paused_(false), progress_(0.0) {}
     
@@ -270,13 +272,12 @@ public:
     }
     
     void setupTrials() {
-        trials = vector<Trial>(8);
         for (int i = 0; i < 8; i++) {
             trials[i].param.first_shake_dir = i % 4;
             trials[i].param.initial_fill_limit = fill_limit_lb_ + ((fill_limit_ub_ - fill_limit_lb_) / 7 * i);
             trials[i].score = INF;
         }
-        random_shuffle(trials.begin(), trials.end(), myrandom);
+        random_shuffle(trials, trials + NUM_TRIALS, myrandom);
     }
     
     void update() {
@@ -481,46 +482,45 @@ private:
     
     void adjustParameter(int iteration) {
         if (iteration != 0) {
-            trials[(iteration-1)%trials.size()].score = iteration_score_;
+            trials[(iteration-1)%NUM_TRIALS].score = iteration_score_;
         }
-        if (iteration != 0 && iteration % trials.size() == 0) {
+        if (iteration != 0 && iteration % NUM_TRIALS == 0) {
             // reset trials
-            sort(trials.begin(), trials.end(), lessScore);
+            sort(trials, trials + NUM_TRIALS, lessScore);
 #if PRINT_TRIALS
             cerr << "============RESULT===========" << endl;
-            for (int i = 0; i < trials.size(); i++) {
+            for (int i = 0; i < NUM_TRIALS; i++) {
                 cerr << trials[i].param.initial_fill_limit << "/" << trials[i].param.first_shake_dir << ": "
                 << trials[i].score << endl;
             }
 #endif
             
-            vector<Trial> newtrials(trials.size());
-            for (int i = 0; i < trials.size() - 2; i++) {
-                int a = randxor() % (trials.size() / 2);
-                int b = randxor() % (trials.size() / 2);
+            for (int i = 0; i < NUM_TRIALS - 2; i++) {
+                int a = randxor() % (NUM_TRIALS / 2);
+                int b = randxor() % (NUM_TRIALS / 2);
                 float minl = min(trials[a].param.initial_fill_limit, trials[b].param.initial_fill_limit) - 0.03;
                 float maxl = max(trials[a].param.initial_fill_limit, trials[b].param.initial_fill_limit) + 0.03;
                 if (minl < 0) minl = 0;
                 float newlimit = minl + (maxl - minl) * randxor() / UINT_MAX;
                 float newdir = randxor() % 2 == 0 ? trials[a].param.first_shake_dir : trials[b].param.first_shake_dir;
-                newtrials[i].param.initial_fill_limit = newlimit;
-                newtrials[i].param.first_shake_dir = newdir;
+                trials_buf[i].param.initial_fill_limit = newlimit;
+                trials_buf[i].param.first_shake_dir = newdir;
             }
-            newtrials[trials.size()-2] = trials[0];
-            newtrials[trials.size()-1].param.initial_fill_limit =
+            trials_buf[NUM_TRIALS-2] = trials[0];
+            trials_buf[NUM_TRIALS-1].param.initial_fill_limit =
                 fill_limit_lb_ + (fill_limit_ub_ - fill_limit_lb_) * randxor() / UINT_MAX;
-            newtrials[trials.size()-1].param.first_shake_dir = randxor() % 4;
-            trials = newtrials;
+            trials_buf[NUM_TRIALS-1].param.first_shake_dir = randxor() % 4;
+            memcpy(trials, trials_buf, sizeof(trials));
 #if PRINT_TRIALS
             cerr << "=============NEW=============" << endl;
-            for (int i = 0; i < trials.size(); i++) {
+            for (int i = 0; i < NUM_TRIALS; i++) {
                 cerr << trials[i].param.initial_fill_limit << "/" << trials[i].param.first_shake_dir << endl;
             }
 #endif
-            random_shuffle(trials.begin(), trials.end(), myrandom);
+            random_shuffle(trials, trials + NUM_TRIALS, myrandom);
         }
-        param_.initial_fill_limit = trials[iteration % trials.size()].param.initial_fill_limit;
-        param_.first_shake_dir = trials[iteration % trials.size()].param.first_shake_dir;
+        param_.initial_fill_limit = trials[iteration % NUM_TRIALS].param.initial_fill_limit;
+        param_.first_shake_dir = trials[iteration % NUM_TRIALS].param.first_shake_dir;
         SHAKE_ACCEL = 2000.0f + 1000.0f * randxor() / UINT_MAX;
     }
     
@@ -626,7 +626,7 @@ private:
     }
     
     bool shouldRestart() {
-        if (periods_ >= MAX_PERIODS || (iteration_ < trials.size() && periods_ >= 3)) return true;
+        if (periods_ >= MAX_PERIODS || (iteration_ < NUM_TRIALS && periods_ >= 3)) return true;
         if (periods_ < MIN_PERIODS) return false;
         
         bool res = false;
