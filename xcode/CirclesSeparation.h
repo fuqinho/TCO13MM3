@@ -703,6 +703,7 @@ private:
     }
     
     void applyExternalForce(int frame) {
+        if (frame == 0) return;
 #if ENABLE_SHAKE
         if (frame != 0 && frame % FRAMES_PER_PERIOD == 0) {
             if (hasOverlap()) {
