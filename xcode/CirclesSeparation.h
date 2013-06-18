@@ -269,7 +269,7 @@ public:
         trials = vector<Trial>(8);
         for (int i = 0; i < 8; i++) {
             trials[i].param.first_shake_dir = i % 4;
-            trials[i].param.initial_fill_limit = 0.5 + 0.1 * i;
+            trials[i].param.initial_fill_limit = fill_limit_lb_ + ((fill_limit_ub_ - fill_limit_lb_) / 7 * i);
             trials[i].score = INF;
         }
         random_shuffle(trials.begin(), trials.end(), myrandom);
@@ -406,6 +406,7 @@ private:
     int hover_circle_;
     int shake_dir_;
     bool paused_;
+    float fill_limit_lb_, fill_limit_ub_;
     
     void initializeOnce() {
         srand(10);
@@ -446,7 +447,17 @@ private:
     }
     
     void determineParameter() {
-        
+        if (N >= 200) {
+            fill_limit_lb_ = 0.75;
+            fill_limit_ub_ = 1.05;
+        } else if (N >= 70) {
+            fill_limit_lb_ = 0.65;
+            fill_limit_ub_ = 1.15;
+        } else {
+            fill_limit_lb_ = 0.4;
+            fill_limit_ub_ = 1.4;
+        }
+        fill_limit_ub_ = min(fill_limit_ub_, input_stats_.total_area);
     }
     
     void precomputeValues() {
@@ -491,7 +502,8 @@ private:
                 newtrials[i].param.first_shake_dir = newdir;
             }
             newtrials[trials.size()-2] = trials[0];
-            newtrials[trials.size()-1].param.initial_fill_limit = 0.4 + 1.0 * randxor() / UINT_MAX;
+            newtrials[trials.size()-1].param.initial_fill_limit =
+                fill_limit_lb_ + (fill_limit_ub_ - fill_limit_lb_) * randxor() / UINT_MAX;
             newtrials[trials.size()-1].param.first_shake_dir = randxor() % 4;
             trials = newtrials;
 #if PRINT_TRIALS
