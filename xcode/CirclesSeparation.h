@@ -741,8 +741,6 @@ private:
     
     void solveConstraints(float coefficient) {
         float CD = coefficient / TIME_PER_FRAME;
-        if (frames_ < ANTI_PENETRATION_MILD_FRAMES)
-            CD = ANTI_PENETRATION_MILD_COEFFICIENT / TIME_PER_FRAME;
         
         for (int k = 0; k < num_collisions; k++) {
             int i = collisions[k] >> 16;
@@ -757,8 +755,9 @@ private:
             dv[0] = ball_vx[j] - ball_vx[i];
             dv[1] = ball_vy[j] - ball_vy[i];
             float len = (float)sqrt(norm_dist2);
-            norm[0] /= len;
-            norm[1] /= len;
+            float len_inv = 1.0f / len;
+            norm[0] *= len_inv;
+            norm[1] *= len_inv;
             float CDD = CD * (minimum_distance - len);
             float C = m_mul_div_sum[i][j] * ((1 + E) * dot(dv, norm) - CDD);
             
@@ -779,7 +778,7 @@ private:
             // ball_vx[i] *= 1 - DECAY_PER_FRAME;
             // ball_vy[i] *= 1 - DECAY_PER_FRAME;
             
-            int j = i+4, k = j+4, l = k+4;
+            int j = i+4, k = i+8, l = i+12;
             reg[0] = _mm_load_ps(&ball_vx[i]);
             reg[1] = _mm_load_ps(&ball_vy[i]);
             reg[2] = _mm_load_ps(&ball_vx[j]);
@@ -906,6 +905,31 @@ private:
 #endif
     }
     
+    
+    void saveCurrentState() {
+        memcpy(memo_ball_x, ball_x, sizeof(float) * N);
+        memcpy(memo_ball_y, ball_y, sizeof(float) * N);
+        memcpy(memo_ball_vx, ball_vx, sizeof(float) * N);
+        memcpy(memo_ball_vy, ball_vy, sizeof(float) * N);
+        memcpy(memo_bounds_x, bounds_x, sizeof(float) * N * 2);
+        memcpy(memo_bounds_y, bounds_y, sizeof(float) * N * 2);
+        memcpy(memo_overlapping_count, overlapping_count, sizeof(overlapping_count));
+        memcpy(memo_candidates, candidates, sizeof(candidates));
+        memo_andidates_list_head = candidates_list_head;
+    }
+    
+    void loadCurrentState() {
+        memcpy(ball_x, memo_ball_x, sizeof(float) * N);
+        memcpy(ball_y, memo_ball_y, sizeof(float) * N);
+        memcpy(ball_vx, memo_ball_vx, sizeof(float) * N);
+        memcpy(ball_vy, memo_ball_vy, sizeof(float) * N);
+        memcpy(bounds_x, memo_bounds_x, sizeof(float) * N * 2);
+        memcpy(bounds_y, memo_bounds_y, sizeof(float) * N * 2);
+        memcpy(overlapping_count, memo_overlapping_count, sizeof(overlapping_count));
+        memcpy(candidates, memo_candidates, sizeof(candidates));
+        candidates_list_head = memo_andidates_list_head;
+    }
+    
     void pushPairToList(int a, int b) {
         Candidate* node = &candidates[a][b];
         if (candidates_list_head) {
@@ -921,8 +945,6 @@ private:
         if (node->prev) node->prev->next = node->next;
         if (node->next) node->next->prev = node->prev;
         if (node == candidates_list_head) candidates_list_head = node->next;
-        node->prev = NULL;
-        node->next = NULL;
     }
     
     void sortBounds(unsigned int* bounds, float* pos, int size) {
@@ -950,30 +972,7 @@ private:
             }
         }
     }
-    
-    void saveCurrentState() {
-        memcpy(memo_ball_x, ball_x, sizeof(float) * N);
-        memcpy(memo_ball_y, ball_y, sizeof(float) * N);
-        memcpy(memo_ball_vx, ball_vx, sizeof(float) * N);
-        memcpy(memo_ball_vy, ball_vy, sizeof(float) * N);
-        memcpy(memo_bounds_x, bounds_x, sizeof(float) * N * 2);
-        memcpy(memo_bounds_y, bounds_y, sizeof(float) * N * 2);
-        memcpy(memo_overlapping_count, overlapping_count, sizeof(overlapping_count));
-        memcpy(memo_candidates, candidates, sizeof(candidates));
-        memo_andidates_list_head = candidates_list_head;
-    }
-    
-    void loadCurrentState() {
-        memcpy(ball_x, memo_ball_x, sizeof(float) * N);
-        memcpy(ball_y, memo_ball_y, sizeof(float) * N);
-        memcpy(ball_vx, memo_ball_vx, sizeof(float) * N);
-        memcpy(ball_vy, memo_ball_vy, sizeof(float) * N);
-        memcpy(bounds_x, memo_bounds_x, sizeof(float) * N * 2);
-        memcpy(bounds_y, memo_bounds_y, sizeof(float) * N * 2);
-        memcpy(overlapping_count, memo_overlapping_count, sizeof(overlapping_count));
-        memcpy(candidates, memo_candidates, sizeof(candidates));
-        candidates_list_head = memo_andidates_list_head;
-    }
+
 };
 
 
