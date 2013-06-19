@@ -2,12 +2,12 @@
 // Flags
 ////////////////////////////////////////////////////////////////////////////////////
 
-#define PROFILE 0
+#define PROFILE 1
 #define PRINT_SIMULATED_FRAMES 0
-#define PRINT_SCORE_UPDATES 1
+#define PRINT_SCORE_UPDATES 0
 #define PRINT_BEST_PARAMETERS 0
 #define PRINT_BEST_PARAMETERS_PERIODICALLY 0
-#define PRINT_TRIALS 1
+#define PRINT_TRIALS 0
 
 #define ENABLE_RESTART 1
 #define ENABLE_SHAKE 1
@@ -302,6 +302,11 @@ public:
         detectCollisions();
         PROF_END(2);
         
+        PROF_START();
+        if (frames_ % 100 == 99) updateBest();
+        PROF_END(6);
+        
+        
         ///////////////////////////////////////////////////////
         // change velocity
         PROF_START();
@@ -318,11 +323,10 @@ public:
         
         ///////////////////////////////////////////////////////
         // others
-        PROF_START();
         frames_++;
         frames_in_period_++;
         total_frames_++;
-        if (frames_ % 100 == 0) updateBest();
+        PROF_START();
         if (frames_in_period_ == FRAMES_PER_PERIOD) mayRestart();
         PROF_END(5);
         
@@ -853,10 +857,12 @@ private:
     }
     
     bool hasOverlap() {
-        for (int i = 0; i < N; i++)
-            for (int j = i+1; j < N; j++)
-                if (isOverlap(i, j))
-                    return true;
+        for (int k = 0; k < num_collisions; k++) {
+            int i = collisions[k] >> 16;
+            int j = collisions[k] & ((1<<16)-1);
+            if (isOverlap(i, j))
+                return true;
+        }
         return false;
     }
     
