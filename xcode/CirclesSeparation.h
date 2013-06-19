@@ -609,8 +609,8 @@ private:
                 d[0] = ball_x[index] - center_x;
                 d[1] = ball_y[index] - center_y;
                 normalize(d);
-                ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 3.3);
-                ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 3.3);
+                ball_x[index] += d[0] * (2 + ((float)i / outer.size()) * 2.8);
+                ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 2.8);
             }
         }
         sortBounds(bounds_x, ball_x, 2*N);
