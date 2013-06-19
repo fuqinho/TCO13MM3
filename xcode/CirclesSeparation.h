@@ -4,7 +4,7 @@
 
 #define PROFILE 1
 #define PRINT_SIMULATED_FRAMES 0
-#define PRINT_SCORE_UPDATES 0
+#define PRINT_SCORE_UPDATES 1
 #define PRINT_BEST_PARAMETERS 0
 #define PRINT_BEST_PARAMETERS_PERIODICALLY 0
 #define PRINT_TRIALS 0
@@ -146,6 +146,7 @@ float ball_gravity[MAX_N]__attribute__((aligned(16)));
 float ball_inv_m[MAX_N]__attribute__((aligned(16)));
 float best_x[MAX_N]__attribute__((aligned(16)));
 float best_y[MAX_N]__attribute__((aligned(16)));
+float simd_res[4]__attribute__((aligned(16)));
 
 unsigned int bounds_x[MAX_N*2];
 unsigned int bounds_y[MAX_N*2];
@@ -339,13 +340,39 @@ public:
     }
     
     float currentCost() {
+        PROF_START();
         float cost = 0;
+        /*
         for (int i = 0; i < N; i++) {
             float d[2];
             d[0] = ball_x[i] - ball_ox[i];
             d[1] = ball_y[i] - ball_oy[i];
             cost += (float)sqrt(d[0]*d[0]+d[1]*d[1]) * ball_m[i];
         }
+         */
+        __m128 reg[8];
+        for (int i = 0; i < N; i+=4) {
+            reg[0] = _mm_load_ps(&ball_x[i]);
+            reg[1] = _mm_load_ps(&ball_y[i]);
+            reg[2] = _mm_load_ps(&ball_ox[i]);
+            reg[3] = _mm_load_ps(&ball_oy[i]);
+            reg[4] = _mm_load_ps(&ball_m[i]);
+            
+            reg[0] = _mm_sub_ps(reg[0], reg[2]);
+            reg[1] = _mm_sub_ps(reg[1], reg[3]);
+            reg[0] = _mm_mul_ps(reg[0], reg[0]);
+            reg[1] = _mm_mul_ps(reg[1], reg[1]);
+            reg[0] = _mm_add_ps(reg[0], reg[1]);
+            reg[0] = _mm_sqrt_ps(reg[0]);
+            reg[0] = _mm_mul_ps(reg[0], reg[4]);
+            
+            _mm_store_ps(simd_res, reg[0]);
+            cost += simd_res[0];
+            if (i+1 < N) cost += simd_res[1];
+            if (i+2 < N) cost += simd_res[2];
+            if (i+3 < N) cost += simd_res[3];
+        }
+        PROF_END(7);
         return cost;
     }
     
@@ -895,10 +922,8 @@ private:
             cerr << "cost: " << cost << endl;
 #endif
             best_cost = cost;
-            for (int i = 0; i < N; i++) {
-                best_x[i] = ball_x[i];
-                best_y[i] = ball_y[i];
-            }
+            memcpy(best_x, ball_x, sizeof(float)*N);
+            memcpy(best_y, ball_y, sizeof(float)*N);
             best_param_ = param_;
         }
     }
