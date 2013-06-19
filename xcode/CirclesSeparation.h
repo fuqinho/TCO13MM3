@@ -230,6 +230,22 @@ static inline float overlapping_area(float x1, float y1, float r1, float x2, flo
     return fanA + fanB - triangle;
 }
 
+bool lessBoundX(int i, int j) {
+    int a = (i & BOUNDS_NODEID_MASK);
+    int b = (j & BOUNDS_NODEID_MASK);
+    float x0 = ball_x[a] + (ball_r[a] + BOUNCE_MARGIN) * ((i & BOUNDS_ISLEFT_BIT) ? -1 : 1);
+    float x1 = ball_x[b] + (ball_r[b] + BOUNCE_MARGIN) * ((j & BOUNDS_ISLEFT_BIT) ? -1 : 1);
+    return x0 < x1;
+}
+
+bool lessBoundY(int i, int j) {
+    int a = (i & BOUNDS_NODEID_MASK);
+    int b = (j & BOUNDS_NODEID_MASK);
+    float y0 = ball_y[a] + (ball_r[a] + BOUNCE_MARGIN) * ((i & BOUNDS_ISLEFT_BIT) ? -1 : 1);
+    float y1 = ball_y[b] + (ball_r[b] + BOUNCE_MARGIN) * ((j & BOUNDS_ISLEFT_BIT) ? -1 : 1);
+    return y0 < y1;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 // Main class
@@ -644,9 +660,39 @@ private:
                 ball_y[index] += d[1] * (2 + ((float)i / outer.size()) * 2.8);
             }
         }
-        sortBounds(bounds_x, ball_x, 2*N);
-        sortBounds(bounds_y, ball_y, 2*N);
-        
+        PROF_START();
+        sort(bounds_x, bounds_x + 2*N, lessBoundX);
+        sort(bounds_y, bounds_y + 2*N, lessBoundY);
+        for (int i = 0; i < 2*N; i++) {
+            if (bounds_x[i] & BOUNDS_ISLEFT_BIT) {
+                int a = bounds_x[i] & BOUNDS_NODEID_MASK;
+                for (int j = i+1; j < 2*N; j++) {
+                    int b = bounds_x[j] & BOUNDS_NODEID_MASK;
+                    if (b == a) break;
+                    if (bounds_x[j] & BOUNDS_ISLEFT_BIT) {
+                        overlapping_count[min(a,b)][max(a,b)]++;
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < 2*N; i++) {
+            if (bounds_y[i] & BOUNDS_ISLEFT_BIT) {
+                int a = bounds_y[i] & BOUNDS_NODEID_MASK;
+                for (int j = i+1; j < 2*N; j++) {
+                    int b = bounds_y[j] & BOUNDS_NODEID_MASK;
+                    if (b == a) break;
+                    if (bounds_y[j] & BOUNDS_ISLEFT_BIT) {
+                        overlapping_count[min(a,b)][max(a,b)]++;
+                        if (overlapping_count[min(a,b)][max(a,b)] == 2) {
+                            pushPairToList(min(a,b), max(a,b));
+                        }
+                    }
+                }
+            }
+        }
+        // sortBounds(bounds_x, ball_x, 2*N);
+        // sortBounds(bounds_y, ball_y, 2*N);
+        PROF_END(7);
         initPeriod();
     }
     
